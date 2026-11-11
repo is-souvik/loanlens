@@ -22,7 +22,16 @@ The customer's own Claude does the reading and writing (admit letters, sanction 
    > Read these documents and build my LoanLens plan: add the costs and every loan offer exactly as written. Then tell me which loan costs my family least.
 4. Open the live app (test login). The plan is there. Change any number; the answer updates instantly.
 
-More prompts: the **Ask Claude** page in the app has 27, grouped by stage (build a plan, costs, loan offers, decide, explain to family, keep it updated).
+More prompts: the **Ask Claude** page in the app has 31, grouped by what you're doing (build a plan, costs, loan offers, decide, explain to family, keep it updated, your journey).
+
+## The student's journey
+
+Every plan carries a six-stage strip: **Shortlist → Admit and I-20 → Loan offers → Sanction and visa → Studying → Repaying**. Each stage shows:
+- **Live checks** computed from the plan with real rules: first-year proof of funds against the country's visa rule (UKVI, IRCC, Home Affairs, German blocked account, US I-20), margin money against savings, rates quoted above the lender's own card, fees and GST due at sanction, TCS on self-funded transfers, interest piling up during the course and what paying it monthly saves, part-time work rules, EMI as a share of take-home pay, what prepaying saves, and whether 80E helps under the family's tax regime.
+- **A document checklist** saved with the plan (KYC, co-borrower ITR, property papers for secured loans, Form A2, DS-160, fee invoices, 80E certificates…).
+- **The Claude prompts** for that stage.
+
+Claude sees the same journey through `get_plan` and can tick documents it has read and move the stage with `update_plan`.
 
 ## How it works
 
@@ -41,8 +50,8 @@ Student's Claude ──MCP──▶ LoanLens server ──▶ Postgres
 |---|---|
 | `create_plan` | Starts a plan; can fill typical costs from the 97-programme dataset |
 | `add_loan_offer` | Adds one offer exactly as written; missing terms filled from the lender's published card and reported back |
-| `update_plan`, `update_offer`, `remove_offer` | Corrections and changes |
-| `list_plans`, `get_plan` | Read plans with every computed number and the family link |
+| `update_plan`, `update_offer`, `remove_offer` | Corrections and changes; `update_plan` also sets the journey stage and ticks checklist items |
+| `list_plans`, `get_plan` | Read plans with every computed number, the journey checks and checklist, and the family link |
 | `compare_offers` | Ranks offers under a what-if: rupee fall, paying interest while studying, prepaying, tax regime, returning to India, tenure |
 | `simulate_risk` | Replays the plan across every start month since 2001 |
 | `lookup_universities`, `lookup_lenders` | Reference data |
@@ -89,6 +98,7 @@ Render's free web service sleeps after 15 minutes idle and takes about a minute 
 src/server.js     web API, auth, family links, MCP endpoint
 src/mcp.js        the 11 MCP tools
 src/engine.js     calculation and historical-replay engine
+src/journey.js    stage checks and document checklists (shared by server and browser)
 src/store.js      plans, users, activity
 src/data*.js      dataset loading (Node and browser)
 public/           web app (plain JS) + browser engine bundle

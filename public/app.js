@@ -123,7 +123,11 @@
     async logout() { await this.req('POST', '/api/logout'); },
     async listPlans() { return (await this.req('GET', '/api/plans')).plans; },
     async getPlan(id) { return (await this.req('GET', `/api/plans/${id}`)).plan; },
-    async savePlan(plan, note) { const r = await this.req('PUT', `/api/plans/${plan.id}`, { plan, note }); plan.updated_at = r.updated_at; return plan; },
+    async savePlan(plan, note) {
+      plan._saving = (plan._saving || 0) + 1;
+      try { const r = await this.req('PUT', `/api/plans/${plan.id}`, { plan, note }); plan.updated_at = r.updated_at; } finally { plan._saving -= 1; }
+      return plan;
+    },
     async activity(id) { return (await this.req('GET', `/api/plans/${id}/activity`)).activity; },
     async createPlan() { return (await this.req('POST', '/api/plans', {})).plan; },
     async version(id) { return (await this.req('GET', `/api/plans/${id}/version`)).updated_at; },
@@ -236,7 +240,7 @@
       const s = planSummary(p);
       return `<a class="card plan-card mt12" href="#/plan/${esc(p.id)}">
         <div><h3>${esc(p.title || 'Untitled plan')}</h3><div class="small muted mt8">${esc(p.university || 'University not set')}${p.intake ? ` · ${esc(p.intake)}` : ''}</div>
-          <div class="meta">${p.source === 'claude' ? '<span class="chip claude">Created by Claude</span>' : '<span class="chip">Created by you</span>'}<span class="chip">${(p.offers || []).length} loan offers</span><span class="chip">Updated ${ago(p.updated_at || Date.now())}</span></div></div>
+          <div class="meta">${p.source === 'claude' ? '<span class="chip claude">Created by Claude</span>' : '<span class="chip">Created by you</span>'}<span class="chip">Stage: ${esc(LL.JOURNEY_STAGES.find((x) => x.id === LL.inferStage(p))?.title || '')}</span><span class="chip">${(p.offers || []).length} loan offers</span><span class="chip">Updated ${ago(p.updated_at || Date.now())}</span></div></div>
         <div class="ans">${s ? `Best option: <b>${esc(s.rec.lender)}</b>. Degree costs <b>${lakh(s.c.coa_inr)}</b>; your family pays <b>${lakh(s.rr?.all_in?.p50 ?? s.rec.all_in_inr)}</b> in total with this loan, and the EMI is <b>${inr(s.rec.emi_inr)}</b> a month.` : 'Not finished yet. Add the costs and at least one loan offer.'}</div>
         <span class="btn">Open plan</span></a>`;
     }).join('');
@@ -294,22 +298,24 @@
     plan.assumptions = Object.assign({}, LL.DEFAULT_ASSUMPTIONS, plan.assumptions || {});
     plan.funds ||= {}; plan.costs ||= []; plan.offers ||= [];
     const same = cur?.plan?.id === id;
-    cur = { plan, comp: null, risk: null, riskKey: null, activity: await Store.activity(id), sel: same ? cur.sel : null, openOffer: same ? cur.openOffer : null, openSec: same ? cur.openSec : null, costsOpen: same ? cur.costsOpen : false, picking: false, uq: '', tMonth: same ? cur.tMonth : null };
+    cur = { plan, comp: null, risk: null, riskKey: null, activity: await Store.activity(id), sel: same ? cur.sel : null, openOffer: same ? cur.openOffer : null, openSec: same ? cur.openSec : null, costsOpen: same ? cur.costsOpen : false, picking: false, uq: '', tMonth: same ? cur.tMonth : null, jOpen: same ? cur.jOpen : null };
     if (complete(plan)) recompute();
     document.title = `${plan.title || 'New plan'} · LoanLens`;
     $app.innerHTML = shell('plans', `
       <div class="phead" id="phead"></div>
+      <section class="stages" id="stages" aria-label="Your journey"></section>
       <div class="calc">
         <aside class="card inputs" id="inputs" aria-label="Your details"></aside>
         <section class="output" id="output" aria-live="polite"></section>
       </div>`);
-    renderHead(); renderInputs(); renderOutput();
+    renderHead(); renderStages(); renderInputs(); renderOutput();
     if (MODE === 'live') {
-      let v = plan.updated_at;
+      clearInterval(poll);
       poll = setInterval(async () => {
-        if (!location.hash.startsWith('#/plan/') || document.activeElement?.matches('input,select')) return;
-        const nv = await Store.version(plan.id).catch(() => v);
-        if (nv && nv !== v) { v = nv; const y = window.scrollY; await renderPlan(plan.id); window.scrollTo(0, y); document.getElementById('output')?.classList.add('flash'); toast('Claude just updated this plan'); }
+        if (!location.hash.startsWith('#/plan/') || cur?.plan?._saving || document.activeElement?.matches('input:not([type=checkbox]),select')) return;
+        const mine = cur?.plan?.updated_at;
+        const nv = await Store.version(plan.id).catch(() => mine);
+        if (nv && mine && nv > mine) { const y = window.scrollY; await renderPlan(plan.id); window.scrollTo(0, y); document.getElementById('output')?.classList.add('flash'); toast('Claude just updated this plan'); }
       }, 3000);
     }
   }
@@ -320,6 +326,42 @@
       <div><div class="crumb"><a href="#/plans">My plans</a></div><h1>${esc(p.title || 'New loan plan')}</h1>
         <p class="sub">Which loan offer costs your family the least? Answer the three questions on the left.</p></div>
       ${complete(p) ? `<div class="phead-act"><a class="btn" href="#/share/${esc(p.share_token)}" target="_blank" rel="noopener">Family view</a><button class="btn primary" data-act="share">Share with family</button></div>` : ''}`;
+  }
+
+
+  // ----- the student's journey: where you are, what to check, what to collect -----
+  const TONE = { good: 'Looks fine', warn: 'Watch this', bad: 'Fix this', info: 'Good to know' };
+  function renderStages() {
+    const p = cur.plan; const box = document.getElementById('stages'); if (!box) return;
+    let j; try { j = LL.journey(p, cur.comp ? recId() : undefined); } catch (err) { console.error(err); box.innerHTML = ''; return; }
+    const open = j.stages.find((s) => s.id === cur.jOpen);
+    const now = j.stages.find((s) => s.id === j.current);
+    const flag = (s) => s.checks.some((c) => c.tone === 'bad') ? 'bad' : s.checks.some((c) => c.tone === 'warn') ? 'warn' : '';
+    const lead = now.checks.find((c) => c.tone === 'bad') || now.checks.find((c) => c.tone === 'warn') || now.checks[0];
+    box.innerHTML = `
+      <ol class="st-strip">${j.stages.map((s) => `<li class="st ${s.status} ${s.ticked === s.checklist.length ? 'full' : ''} ${open?.id === s.id ? 'open' : ''}">
+        <button data-act="stage" data-v="${s.id}" aria-expanded="${open?.id === s.id}">
+          <span class="st-dot">${s.status === 'done' || s.ticked === s.checklist.length ? '✓' : ''}</span>
+          <span class="st-t"><b>${esc(s.title)}</b><small>${s.status === 'now' ? 'You are here' : `${s.ticked}/${s.checklist.length} documents`}</small></span>
+          ${flag(s) ? `<i class="st-flag ${flag(s)}" title="${flag(s) === 'bad' ? 'Something to fix' : 'Something to watch'}"></i>` : ''}
+        </button></li>`).join('')}</ol>
+      ${open ? stagePanel(open, j.current) : lead ? `<button class="st-lead ${lead.tone}" data-act="stage" data-v="${now.id}"><b>${esc(now.title)}:</b> ${esc(lead.title)}<span>Open</span></button>` : ''}`;
+    const strip = box.querySelector('.st-strip'); const at = box.querySelector('.st.now');
+    if (strip && at && strip.scrollWidth > strip.clientWidth) strip.scrollLeft = at.offsetLeft - strip.clientWidth / 2 + at.offsetWidth / 2;
+  }
+  function stagePanel(s, current) {
+    const chips = s.prompts.map((id) => PROMPTS.find((x) => x.id === id)).filter(Boolean);
+    return `<div class="st-panel card">
+      <div class="st-ph"><div><h3>${esc(s.title)}</h3><span class="small muted">${esc(s.when)}</span></div>
+        <div class="st-pa">${s.id === current ? '<span class="st-here">You are here</span>' : `<button class="btn small" data-act="set-stage" data-v="${s.id}">I’m at this stage</button>`}<button class="x" data-act="stage" data-v="" aria-label="Close">✕</button></div></div>
+      <div class="st-grid">
+        <div><h4>What we checked</h4>${s.checks.length ? s.checks.map((c) => `<div class="chk ${c.tone}"><span class="chk-t">${TONE[c.tone]}</span><b>${esc(c.title)}</b><p>${esc(c.text)}</p></div>`).join('') : '<p class="hint">Add your university and offers to see checks here.</p>'}</div>
+        <div><h4>Documents <span class="muted">${s.ticked} of ${s.checklist.length}</span></h4>
+          <div class="st-bar"><i style="width:${s.checklist.length ? Math.round((s.ticked / s.checklist.length) * 100) : 0}%"></i></div>
+          <ul class="docs">${s.checklist.map((c) => `<li><label><input type="checkbox" data-check="${c.key}" data-label="${esc(c.label)}" ${c.done ? 'checked' : ''}><span>${esc(c.label)}</span></label></li>`).join('')}</ul></div>
+        <div><h4>Ask Claude</h4><p class="hint" style="margin-top:0">Copy, then paste into Claude with LoanLens connected.</p>
+          ${chips.map((x) => { const t = fillPrompt(x.text, cur.plan); return `<button class="st-prompt" data-act="copy" data-text="${esc(t)}"><b>${esc(x.title)}</b><small>${esc(x.when)}</small><span>Copy</span></button>`; }).join('')}</div>
+      </div></div>`;
   }
 
   // ----- left: the three questions -----
@@ -723,7 +765,7 @@
     if (complete(cur.plan)) recompute();
     await Store.savePlan(cur.plan, note);
     if (note) cur.activity = await Store.activity(cur.plan.id);
-    renderHead(); renderInputs();
+    renderHead(); renderStages(); renderInputs();
     if (complete(cur.plan) && wasComplete) { renderWhatIf(); fillOutput(); } else renderOutput();
   }
 
@@ -751,6 +793,11 @@
       if (old === v) return;
       c[f] = v; (c.edited ||= {})[f] = true;
       return commit(`Changed cost “${c.label}”: ${FIELD[f] || f} to ${v}`);
+    }
+    if (t.dataset.check) {
+      p.checklist = { ...(p.checklist || {}) };
+      if (t.checked) p.checklist[t.dataset.check] = true; else delete p.checklist[t.dataset.check];
+      return commit(`${t.checked ? 'Ticked' : 'Unticked'}: ${t.dataset.label}`);
     }
     if (t.dataset.fund) { p.funds[t.dataset.fund] = t.value === '' ? (t.dataset.fund === 'savings_inr' ? null : 0) : Number(t.value); return commit(`Set ${t.dataset.fund === 'savings_inr' ? 'family savings' : 'scholarship'} to ${t.value || 'blank'}`); }
     if ('fundCcy' in t.dataset) { p.funds.scholarship_currency = t.value; return commit(null); }
@@ -789,6 +836,8 @@
         cur.picking = false; cur.costsOpen = true; toast('Now fill in the costs from your I-20.');
         return commit(`Added ${name} by hand`);
       }
+      case 'stage': cur.jOpen = cur.jOpen === b.dataset.v || !b.dataset.v ? null : b.dataset.v; renderStages(); return;
+      case 'set-stage': { p.stage = b.dataset.v; const t = LL.JOURNEY_STAGES.find((x) => x.id === p.stage)?.title; toast(`Moved to ${t}`); return commit(`Moved to stage: ${t}`); }
       case 'toggle-costs': cur.costsOpen = !cur.costsOpen; renderInputs(); return;
       case 'add-cost': p.costs.push({ id: uid(), label: 'New cost', category: 'other', amount: 0, currency: p.currency || 'USD', frequency: 'one_time', source: 'manual', edited: {} }); cur.costsOpen = true; return commit('Added a cost');
       case 'remove-cost': { const c = p.costs.find((x) => x.id === b.dataset.id); p.costs = p.costs.filter((x) => x.id !== b.dataset.id); return commit(`Removed cost: ${c.label}`); }

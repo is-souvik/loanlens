@@ -135,8 +135,12 @@ export function sanitizePlan(p) {
       return_to_india: !!A.return_to_india, india_salary_inr: num(A.india_salary_inr, null), prepay_monthly_inr: Math.max(0, num(A.prepay_monthly_inr, 0)),
     },
     source: str(p.source, 20) || 'manual',
+    stage: STAGES.includes(p.stage) ? p.stage : undefined,
+    checklist: p.checklist && typeof p.checklist === 'object'
+      ? Object.fromEntries(Object.entries(p.checklist).filter(([k, v]) => v && /^[a-z0-9_]{1,40}$/.test(k)).slice(0, 80).map(([k]) => [k, true])) : {},
   };
 }
+export const STAGES = ['shortlist', 'admit', 'offers', 'sanction', 'studying', 'repaying'];
 
 // ---------- helpers for building plans (used by MCP) ----------
 export const COUNTRY_DEFAULTS = {

@@ -5,11 +5,12 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod';
 import * as S from './store.js';
 import { computePlan, simulateRisk } from './engine.js';
+import { journeySummary, STAGES } from './journey.js';
 import { fxStats, findLender, searchUniversities, LENDERS, FX_AS_OF, REPO_NOW, SPOT } from './data.js';
 
 const INSTRUCTIONS = `LoanLens compares study-abroad education loan offers for Indian families on the total amount the family pays, tested against 25 years of real rupee and RBI rate history. There is no AI inside LoanLens: you (Claude) read the student's documents and explain; LoanLens stores the plan, does the math and shares a live page with the family.
 
-Typical flow: create_plan (use_typical_costs if there's no I-20 yet) -> add_loan_offer once per sanction letter, copying numbers exactly -> get_plan or compare_offers to answer. Always give the user the plan_url so they can open and edit the plan. Amounts in INR are rupees (1 lakh = 100,000; 1 crore = 10,000,000). Never invent loan terms: if a number is missing from a letter, leave it out and say so; LoanLens fills it from the lender's published rate card and marks it.`;
+Typical flow: create_plan (use_typical_costs if there's no I-20 yet) -> add_loan_offer once per sanction letter, copying numbers exactly -> get_plan or compare_offers to answer. Always give the user the plan_url so they can open and edit the plan. Amounts in INR are rupees (1 lakh = 100,000; 1 crore = 10,000,000). get_plan also returns journey: the student's stage (shortlist, admit, offers, sanction, studying, repaying), live checks for that stage (proof of funds, margin money, TCS, interest piling up, EMI share) and a document checklist; tick items with update_plan mark_done when the user's documents show them. Never invent loan terms: if a number is missing from a letter, leave it out and say so; LoanLens fills it from the lender's published rate card and marks it.`;
 
 const ok = (obj) => ({ content: [{ type: 'text', text: JSON.stringify(obj, null, 1) }] });
 const fail = (msg) => ({ content: [{ type: 'text', text: msg }], isError: true });
@@ -50,6 +51,7 @@ export function buildServer(user, baseUrl) {
   };
   const save = async (p, note) => { await S.savePlan(user.id, p.id, p); if (note) await S.logActivity(p.id, 'Claude', 'c', note); };
   const view = (p) => ({ plan_id: p.id, title: p.title, plan_url: planUrl(p), family_share_url: shareUrl(p) });
+  const journeyOf = (p) => { try { return journeySummary(p, S.summarize(p).recommended_offer_id); } catch { return null; } };
   const matchOffer = (p, idOrName) => p.offers.find((o) => o.id === idOrName) || p.offers.find((o) => o.lender.toLowerCase().includes(String(idOrName || '').toLowerCase()));
 
   server.registerTool('list_plans', {
@@ -66,7 +68,7 @@ export function buildServer(user, baseUrl) {
   }, async ({ plan_id }) => {
     const p = await findPlan(plan_id);
     if (!p) return fail('No plan found. Create one with create_plan.');
-    return ok({ ...view(p), inputs: { university: p.university, country: p.country, program: p.program, intake: p.intake, duration_months: p.duration_months, currency: p.currency, costs: p.costs, funds: p.funds, assumptions: p.assumptions, offers: p.offers }, results: S.summarize(p) });
+    return ok({ ...view(p), inputs: { university: p.university, country: p.country, program: p.program, intake: p.intake, duration_months: p.duration_months, currency: p.currency, costs: p.costs, funds: p.funds, assumptions: p.assumptions, offers: p.offers }, results: S.summarize(p), journey: journeyOf(p) });
   });
 
   server.registerTool('create_plan', {
@@ -122,7 +124,7 @@ export function buildServer(user, baseUrl) {
   });
 
   server.registerTool('update_plan', {
-    title: 'Update a plan', description: 'Change plan details: costs (replace all, or add/remove lines), savings, scholarship, salary, tax regime, exchange rate, course length.',
+    title: 'Update a plan', description: 'Change plan details: costs (replace all, or add/remove lines), savings, scholarship, salary, tax regime, exchange rate, course length, the student\'s current stage, and the document checklist.',
     inputSchema: {
       plan_id: z.string().optional(), student: z.string().optional(), university: z.string().optional(), program: z.string().optional(), intake: z.string().optional(),
       duration_months: z.number().int().min(3).max(60).optional(), replace_costs: z.array(costSchema).optional(), add_costs: z.array(costSchema).optional(),
@@ -130,6 +132,9 @@ export function buildServer(user, baseUrl) {
       scholarship_currency: z.enum(['USD', 'GBP', 'EUR', 'CAD', 'AUD', 'INR']).optional(), expected_salary: z.number().min(0).optional(),
       india_salary_inr: z.number().min(0).optional(), tax_regime: z.enum(['new', 'old']).optional(),
       fx_rate: z.number().positive().optional().describe('Rupees per unit of the plan currency, e.g. 95.5 for USD'),
+      stage: z.enum(STAGES.map((x) => x.id)).optional().describe('Where the student is now: shortlist, admit, offers, sanction, studying, repaying'),
+      mark_done: z.array(z.string()).optional().describe('Checklist keys to tick, from get_plan journey.checklist, e.g. ["admit_letter","i20","kyc"]. Tick only what the user\'s documents show.'),
+      mark_not_done: z.array(z.string()).optional(),
     },
   }, async (a) => {
     const p = await findPlan(a.plan_id);
@@ -144,9 +149,16 @@ export function buildServer(user, baseUrl) {
     if (a.scholarship_currency) p.funds.scholarship_currency = a.scholarship_currency;
     for (const k of ['expected_salary', 'india_salary_inr', 'tax_regime']) if (a[k] !== undefined) { p.assumptions[k] = a[k]; changed.push(k.replace(/_/g, ' ')); }
     if (a.fx_rate) { p.fx_rates = { ...(p.fx_rates || {}), [p.currency]: a.fx_rate }; changed.push('exchange rate'); }
+    if (a.stage) { p.stage = a.stage; changed.push(`stage to ${STAGES.find((x) => x.id === a.stage).title}`); }
+    if (a.mark_done?.length || a.mark_not_done?.length) {
+      p.checklist = { ...(p.checklist || {}) };
+      for (const k of a.mark_done || []) p.checklist[k] = true;
+      for (const k of a.mark_not_done || []) delete p.checklist[k];
+      changed.push(`checklist (${(a.mark_done || []).length} ticked${a.mark_not_done?.length ? `, ${a.mark_not_done.length} unticked` : ''})`);
+    }
     if (a.university || a.program) p.title = `${p.program || 'Master’s'}, ${p.university.replace(/^The /, '')}`;
     await save(p, `Updated ${changed.join(', ') || 'the plan'}`);
-    return ok({ ...view(p), changed, results: S.summarize(p) });
+    return ok({ ...view(p), changed, results: S.summarize(p), journey: journeyOf(p) });
   });
 
   server.registerTool('update_offer', {

@@ -29,6 +29,12 @@ const u = await call('update_offer', { plan_id: id, offer: 'Avanse', rate_pct: 1
 console.log('update_offer Avanse 10.9 → recommended', u.results.recommended_lender);
 const up = await call('update_plan', { plan_id: id, add_costs: [{ label: 'Housing deposit', amount: 1500, currency: 'USD', frequency: 'one_time', category: 'deposit' }], scholarship: 4000, scholarship_currency: 'USD' });
 console.log('update_plan →', up.changed.join('; '));
+const jr = await call('update_plan', { plan_id: id, stage: 'sanction', mark_done: ['admit_letter', 'i20', 'kyc', 'itr'] });
+console.log('journey →', jr.changed.join('; '), '| stage', jr.journey.stage);
+for (const c of jr.journey.stage_checks) console.log('   ', c);
+console.log('   admit checklist:', jr.journey.checklist.admit.join(' | '));
+const gp = await call('get_plan', { plan_id: id });
+console.log('get_plan journey stage persisted:', gp.journey.stage, '| kyc ticked:', gp.journey.checklist.offers.some((x) => x.startsWith('[x] kyc')));
 const r = await call('simulate_risk', { plan_id: id });
 console.log('simulate_risk → windows', r.method.slice(0, 60), '| p(3L over)', r.chance_cost_3_lakh_over_estimate);
 const g = await call('get_plan', { plan_id: id });
