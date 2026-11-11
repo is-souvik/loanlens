@@ -1,0 +1,15 @@
+lender,type,rate_min,rate_max,processing_fee,max_loan,collateral_free_cap,margin_money,moratorium_interest,benchmark,source,as_of
+SBI Global Ed-Vantage,PSU bank,9.65,11.15,"Rs 10,000 flat",Rs 1.5 Cr,Rs 50L (premier list),15%,"Capitalised; 1% concession if interest serviced",EBR (repo-linked),ivyedgesop.com,2026-04
+Bank of Baroda Baroda Scholar,PSU bank,8.70,12.70,"1%, capped at Rs 10,000",Rs 1.5 Cr,Rs 40L (premier STEM),10%,Capitalised,BRLLR (repo-linked),ivyedgesop.com,2026-04
+Canara Bank IBA,PSU bank,9.25,11.25,"Rs 0-5,000",Rs 1.5 Cr,Rs 7.5L,n/a,Capitalised,RLLR (repo-linked),ivyedgesop.com,2026-04
+Bank of India Star,PSU bank,9.35,11.35,"Rs 5,000-10,000",Rs 1.5 Cr,Rs 7.5L,n/a,n/a,RBLR (repo-linked),ivyedgesop.com,2026-04
+Union Bank of India,PSU bank,9.00,11.70,n/a,Rs 1.5 Cr,n/a,n/a,n/a,EBLR (repo-linked),nomadcredit.com,2026
+HDFC Credila,NBFC,9.75,11.25,1-1.25% + GST,No cap (secured); Rs 75L (unsecured),Rs 50-75L (premier),0%,n/a,Own benchmark,ivyedgesop.com,2026-04
+Avanse,NBFC,10.25,14.00,1.25-1.75% + GST,Rs 3 Cr (secured); Rs 1.25 Cr (unsecured),Up to Rs 1.25 Cr,0%,n/a,Own benchmark,ivyedgesop.com,2026-04
+InCred,NBFC,10.50,12.50,0.5-1.25% + GST,Rs 2 Cr (secured); Rs 75L (unsecured),Up to Rs 75L,0%,n/a,Own benchmark,ivyedgesop.com,2026-04
+Auxilo,NBFC,11.25,14.00,Up to 2% + GST,Rs 65L,Case by case,n/a,n/a,Own benchmark,ivyedgesop.com,2026-04
+ICICI Bank,Private bank,10.25,12.75,1-2% + GST,Rs 3 Cr (secured); Rs 1.5 Cr (unsecured),Rs 1 Cr (select institutes),n/a,n/a,n/a,ivyedgesop.com,2026-04
+Axis Bank,Private bank,9.99,13.70,0.75-2% + GST,Rs 1.5 Cr (unsecured),Rs 75L-1 Cr,n/a,n/a,n/a,ivyedgesop.com,2026-04
+Prodigy Finance,International (USD),9.65,12.15,4.2% admin fee (capitalised),USD 220K,Full (no collateral or cosigner),n/a,n/a,Own (USD),ivyedgesop.com / nomadcredit.com,2026
+MPOWER Financing,International (USD),9.99,9.99,n/a,Varies,Full (no collateral or cosigner),n/a,n/a,Fixed APR,nomadcredit.com,2026
+Leap Finance,International (USD),8.45,n/a,n/a,Full cost of attendance,Full (no collateral or cosigner),n/a,n/a,Own (USD),nomadcredit.com,2026

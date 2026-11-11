@@ -1,0 +1,10 @@
+import { computePlan, simulateRisk } from '../src/engine.js';
+import { SAMPLE } from './sample-plan.mjs';
+const t0=Date.now(); const c = computePlan(SAMPLE); const r = simulateRisk(SAMPLE); console.log('ms', Date.now()-t0);
+const L=(x)=> (x/1e5).toFixed(1)+'L';
+console.log('COA', L(c.coa_inr), 'bench', c.university_benchmark?.university, L(c.university_benchmark.typical_total_inr), c.university_benchmark.vs_plan_pct+'%');
+for (const o of c.offers) console.log(o.lender.padEnd(22), 'drawn', L(o.drawn_inr), 'EMI', o.emi_inr, 'payback', L(o.total_payback_inr), 'family', L(o.family_arranges_inr), 'allin', L(o.all_in_inr), 'rank', o.rank, o.market_benchmark?.position, 'afford', o.affordability?.emi_share_pct, o.affordability?.band, 'tcs', o.tcs_blocked_inr);
+console.log(r.method); console.log('coa band', L(r.coa.p10), L(r.coa.p50), L(r.coa.p90), 'worst', L(r.coa.worst), 'p>3L', r.prob_cost_3l_over_plan, 'gap>savings', r.prob_gap_exceeds_savings, 'buffer', L(r.recommended_buffer_inr));
+for (const o of r.offers) console.log(o.lender.padEnd(22), 'allin', L(o.all_in.p10), L(o.all_in.p50), L(o.all_in.p90), 'emi', o.emi.p50, o.emi.p90, 'peak', o.emi_peak_p90);
+const c2 = computePlan(SAMPLE, { pay_interest_during_study: true, tax_regime: 'old' });
+for (const o of c2.offers) console.log('pay+old', o.lender.padEnd(22), 'EMI', o.emi_inr, 'study/mo', o.monthly_interest_during_study_inr, 'allin', L(o.all_in_inr), '80E', o.tax_80e_saving_inr);

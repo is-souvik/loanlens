@@ -1,0 +1,9 @@
+node_modules/
+*.db
+*.db-journal
+.env
+build-parts/
+themes/
+*.png
+loanlens-prototype.html
+colour-options.png
