@@ -127,7 +127,7 @@ export function sanitizePlan(p) {
     fx_rates: p.fx_rates && typeof p.fx_rates === 'object' ? Object.fromEntries(Object.entries(p.fx_rates).filter(([k, v]) => CCY.has(k) && num(v) > 0).map(([k, v]) => [k, Number(v)])) : undefined,
     costs: (Array.isArray(p.costs) ? p.costs : []).slice(0, 40).map((c) => sanitizeCost(c, currency)),
     offers: (Array.isArray(p.offers) ? p.offers : []).slice(0, 8).map(sanitizeOffer),
-    funds: { savings_inr: num(p.funds?.savings_inr, null), scholarship: Math.max(0, num(p.funds?.scholarship, 0)), scholarship_currency: CCY.has(p.funds?.scholarship_currency) ? p.funds.scholarship_currency : currency },
+    funds: { savings_inr: num(p.funds?.savings_inr, null), scholarship: Math.max(0, num(p.funds?.scholarship, 0)), scholarship_currency: CCY.has(p.funds?.scholarship_currency) ? p.funds.scholarship_currency : currency, loan_need_inr: num(p.funds?.loan_need_inr, null) },
     assumptions: {
       fx_shock_pct: Math.min(60, Math.max(0, num(A.fx_shock_pct, 0))), pay_interest_during_study: !!A.pay_interest_during_study,
       tax_regime: A.tax_regime === 'old' ? 'old' : 'new', tax_slab_pct: num(A.tax_slab_pct, 30),
@@ -135,12 +135,15 @@ export function sanitizePlan(p) {
       return_to_india: !!A.return_to_india, india_salary_inr: num(A.india_salary_inr, null), prepay_monthly_inr: Math.max(0, num(A.prepay_monthly_inr, 0)),
     },
     source: str(p.source, 20) || 'manual',
-    stage: STAGES.includes(p.stage) ? p.stage : undefined,
+    stage: STAGES.includes(p.stage) ? p.stage : ({ studying: 'study', repaying: 'repay' })[p.stage],
+    shortlist: (Array.isArray(p.shortlist) ? p.shortlist : []).map((x) => str(x, 140)).filter(Boolean).slice(0, 15),
+    chosen_offer_id: str(p.chosen_offer_id, 40) || undefined,
+    saved_at: num(p.saved_at, null) || undefined,
     checklist: p.checklist && typeof p.checklist === 'object'
       ? Object.fromEntries(Object.entries(p.checklist).filter(([k, v]) => v && /^[a-z0-9_]{1,40}$/.test(k)).slice(0, 80).map(([k]) => [k, true])) : {},
   };
 }
-export const STAGES = ['shortlist', 'admit', 'offers', 'sanction', 'studying', 'repaying'];
+export const STAGES = ['shortlist', 'admit', 'finance', 'offers', 'compare', 'save', 'repay', 'sanction', 'study'];
 
 // ---------- helpers for building plans (used by MCP) ----------
 export const COUNTRY_DEFAULTS = {

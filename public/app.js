@@ -43,11 +43,13 @@
   const PROMPTS = window.LL_PROMPTS || [];
   function fillPrompt(text, plan) {
     let best = null;
-    try { if (plan?.offers?.length && plan.costs?.length) { const c = LL.computePlan(plan); const r = LL.simulateRisk(plan); best = c.offers.find((o) => o.id === (r.best_offer_typical_id || c.best_offer_id))?.lender; } } catch { /* incomplete plan */ }
+    try { if (text.includes('{best}') && plan?.offers?.length && plan.costs?.length) { const c = LL.computePlan(plan); const r = LL.simulateRisk(plan); best = c.offers.find((o) => o.id === (r.best_offer_typical_id || c.best_offer_id))?.lender; } } catch { /* incomplete plan */ }
     return text
       .replace(/\{title\}/g, plan?.title || 'my plan')
       .replace(/\{university\}/g, plan?.university || '[university]')
       .replace(/\{student\}/g, plan?.student || 'me')
+      .replace(/\{program\}/g, plan?.program || 'master’s course')
+      .replace(/\{shortlist\}/g, (plan?.shortlist?.length ? plan.shortlist : plan?.university ? [plan.university] : ['[my colleges]']).join(', '))
       .replace(/\{currency\}/g, plan?.currency || 'dollar')
       .replace(/\{best\}/g, best || plan?.offers?.[0]?.lender || 'the lender');
   }
@@ -103,7 +105,7 @@
     },
     async activity(id) { return Demo.activity[id] || []; },
     async createPlan() {
-      const p = { id: uid(), title: 'New plan', student: Demo.profile.name, university: '', country: 'United States', program: '', intake: '', duration_months: 24, currency: 'USD', costs: [], funds: {}, assumptions: {}, offers: [], source: 'manual', share_token: uid(), updated_at: Date.now() };
+      const p = { id: uid(), title: 'New plan', student: Demo.profile.name, university: '', country: 'United States', program: '', intake: '', duration_months: 24, currency: 'USD', costs: [], funds: {}, assumptions: {}, offers: [], source: 'manual', stage: 'shortlist', share_token: uid(), updated_at: Date.now() };
       Demo.plans.unshift(p); Demo.activity[p.id] = [{ actor: 'You', kind: 'u', text: 'Created an empty plan', at: Date.now() }];
       return p;
     },
@@ -249,9 +251,11 @@
         <div style="display:flex;gap:8px"><button class="btn primary" data-act="new-plan">New plan</button></div></div>
       ${cards || `<div class="card empty mt16"><h2>Build your first loan plan</h2><p class="sub" style="margin:8px auto 16px">Connect Claude, attach your admit letter and loan offers, and ask: “Build my LoanLens plan.” It will appear here.</p><a class="btn primary" href="#/connect">Connect Claude</a></div>`}
       <p class="foot">We refresh this page when Claude changes a plan.</p>`);
+    clearInterval(poll);
     if (MODE === 'live') poll = setInterval(async () => {
+      if (location.hash !== '#/plans') return;
       const ps = await Store.listPlans().catch(() => plans);
-      if (ps.length !== plans.length || ps.some((p, i) => p.updated_at !== plans[i]?.updated_at)) renderPlans();
+      if (location.hash === '#/plans' && (ps.length !== plans.length || ps.some((p, i) => p.updated_at !== plans[i]?.updated_at))) renderPlans();
     }, 4000);
   }
 
@@ -298,17 +302,18 @@
     plan.assumptions = Object.assign({}, LL.DEFAULT_ASSUMPTIONS, plan.assumptions || {});
     plan.funds ||= {}; plan.costs ||= []; plan.offers ||= [];
     const same = cur?.plan?.id === id;
-    cur = { plan, comp: null, risk: null, riskKey: null, activity: await Store.activity(id), sel: same ? cur.sel : null, openOffer: same ? cur.openOffer : null, openSec: same ? cur.openSec : null, costsOpen: same ? cur.costsOpen : false, picking: false, uq: '', tMonth: same ? cur.tMonth : null, jOpen: same ? cur.jOpen : null, tab: same ? cur.tab : null };
+    cur = { plan, comp: null, risk: null, riskKey: null, activity: await Store.activity(id), sel: same ? cur.sel : null, openOffer: same ? cur.openOffer : null, openSec: same ? cur.openSec : null, costsOpen: same ? cur.costsOpen : false, picking: false, uq: '', tMonth: same ? cur.tMonth : null, jOpen: same ? cur.jOpen : null, tab: same ? cur.tab : null, viewSet: same ? cur.view : null };
     if (complete(plan)) recompute();
     document.title = `${plan.title || 'New plan'} · LoanLens`;
+    const reached = LL.inferStage(plan);
+    cur.view = same && cur.viewSet && stepIdx(cur.viewSet) <= stepIdx(reached) ? cur.viewSet : reached;
     $app.innerHTML = shell('plans', `
       <div class="phead" id="phead"></div>
-      <section class="stages" id="stages" aria-label="Your journey"></section>
-      <div class="calc">
-        <aside class="card inputs" id="inputs" aria-label="Your details"></aside>
-        <section class="output" id="output" aria-live="polite"></section>
+      <div class="wiz">
+        <nav class="wnav" id="wnav" aria-label="Your steps"></nav>
+        <section class="wmain" id="wmain" aria-live="polite"></section>
       </div>`);
-    renderHead(); renderStages(); renderInputs(); renderOutput();
+    renderHead(); renderWiz();
     if (MODE === 'live') {
       clearInterval(poll);
       poll = setInterval(async () => {
@@ -324,10 +329,9 @@
     const p = cur.plan;
     document.getElementById('phead').innerHTML = `
       <div><div class="crumb"><a href="#/plans">My plans</a></div><h1>${esc(p.title || 'New loan plan')}</h1>
-        <p class="sub">${complete(p) ? `${p.offers.length} loan offer${p.offers.length === 1 ? '' : 's'} compared on what your family really pays.` : 'Answer the three questions on the left. We do the math.'}</p></div>
-      ${complete(p) ? `<div class="phead-act"><a class="btn" href="#/share/${esc(p.share_token)}" target="_blank" rel="noopener">Family view</a><button class="btn primary" data-act="share">Share with family</button></div>` : ''}`;
+        <p class="sub">Your study-abroad plan, one step at a time.</p></div>
+      ${p.chosen_offer_id && complete(p) ? `<div class="phead-act"><a class="btn" href="#/share/${esc(p.share_token)}" target="_blank" rel="noopener">Family view</a><button class="btn primary" data-act="share">Share with family</button></div>` : ''}`;
   }
-
 
   // ----- the student's journey: where you are, what to check, what to collect -----
   const TONE = { good: 'All good', warn: 'Keep in mind', bad: 'Act on this', info: '' };
@@ -364,34 +368,171 @@
       </div></div>`;
   }
 
+
+  // ----- the guided journey: one step at a time -----
+  const STEPS = () => LL.JOURNEY_STAGES;
+  const stepIdx = (id) => STEPS().findIndex((x) => x.id === id);
+  const chosenId = () => (cur.comp?.offers.some((o) => o.id === cur.plan.chosen_offer_id) ? cur.plan.chosen_offer_id : recId());
+  function startDate() {
+    const m = /(fall|autumn|spring|summer|winter)\D*(\d{4})/i.exec(cur.plan.intake || '');
+    if (!m) { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 9); return d; }
+    return new Date(Number(m[2]), ({ fall: 7, autumn: 8, spring: 0, summer: 4, winter: 0 })[m[1].toLowerCase()], 1);
+  }
+  const monthYear = (d) => d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  const UNI = (name) => LL.UNIVERSITIES.find((u) => u.university === name);
+  const shortlistOf = (p) => { const l = [...(p.shortlist || [])]; if (p.university && !l.includes(p.university)) l.unshift(p.university); return l; };
+
+  function gate(id) {
+    const p = cur.plan; const d = p.checklist || {};
+    if (id === 'shortlist' && !p.university) return 'Pick the college you’ll join first.';
+    if (id === 'admit' && !(d.admit_letter && (d.i20 || d.cas))) return 'Tick your admit letter and I-20 first. Claude can do it for you after reading them.';
+    if (id === 'admit' && !p.costs.length) return 'Add your college’s costs first.';
+    if (id === 'finance' && p.funds.savings_inr == null) return 'Tell us how much your family can pay first.';
+    if (id === 'offers' && !p.offers.length) return 'Add at least one loan offer first.';
+    if (id === 'compare' && !p.chosen_offer_id) return 'Choose one loan first.';
+    if (id === 'save' && !p.saved_at) return 'Save your plan first.';
+    return null;
+  }
+  const NEXT_LABEL = { shortlist: 'Finalise my college', admit: 'Admission done, go to my money', finance: 'See my loan offers', offers: 'Compare my offers', compare: 'Continue', save: 'See my repayment plan', repay: 'Go to sanction and visa', sanction: 'Get ready to study', study: '' };
+
+  function renderWiz() {
+    const p = cur.plan;
+    if (complete(p)) recompute();
+    const steps = STEPS(); const reached = stepIdx(LL.inferStage(p)); const vi = stepIdx(cur.view);
+    let j = null; try { j = LL.journey(p, complete(p) ? chosenId() : undefined); } catch (err) { console.error(err); }
+    document.getElementById('wnav').innerHTML = `<ol>
+      <li class="done"><span class="wn">✓</span><span class="wt">Create your plan</span></li>
+      ${steps.map((st, i) => { const state = i < reached ? 'done' : i === reached ? 'now' : 'locked'; return `<li class="${state}${i === vi ? ' view' : ''}"><button data-act="goto" data-v="${st.id}" ${state === 'locked' ? 'disabled aria-disabled="true"' : ''} ${i === vi ? 'aria-current="step"' : ''}><span class="wn">${state === 'done' ? '✓' : i + 2}</span><span class="wt">${esc(st.title)}${state === 'locked' ? '<small>Locked</small>' : state === 'now' ? '<small>You are here</small>' : ''}</span></button></li>`; }).join('')}</ol>`;
+    const st = steps[vi]; const sj = j?.stages.find((x) => x.id === st.id);
+    const body = (STEP_BODY[st.id] || (() => ''))(sj);
+    const last = vi === steps.length - 1;
+    document.getElementById('wmain').innerHTML = `
+      <div class="step-h"><span class="step-n">Step ${vi + 2} of ${steps.length + 1}</span><h2>${esc(st.title)}</h2><p>${esc(st.when)}</p></div>
+      ${body}
+      ${aux(sj, st.id)}
+      <div class="step-foot">${vi > 0 ? `<button class="btn" data-act="goto" data-v="${steps[vi - 1].id}">Back</button>` : '<span></span>'}
+        ${last ? '<span class="done-note">That’s everything. Have a great start to your course!</span>' : st.id === 'compare' || st.id === 'save' ? '' : `<button class="btn primary" data-act="next">${NEXT_LABEL[st.id]}</button>`}</div>`;
+    if (document.getElementById('sugg')) drawSugg();
+    renderInputs();
+    if (complete(p)) { if (cur.view === 'repay' || !cur.comp.offers.some((o) => o.id === cur.sel)) cur.sel = chosenId(); renderWhatIf(); fillOutput(); }
+    document.querySelectorAll('details.offer-in').forEach((d) => d.addEventListener('toggle', () => { if (d.open) cur.openOffer = d.dataset.offer; else if (cur.openOffer === d.dataset.offer) cur.openOffer = null; }));
+  }
+
+  function checksBlock(sj) {
+    if (!sj?.checks.length) return '';
+    return `<div class="checks">${sj.checks.map((c) => `<div class="chk ${c.tone}">${TONE[c.tone] ? `<span class="chk-t">${TONE[c.tone]}</span>` : ''}<b>${esc(c.title)}</b><p>${esc(c.text)}</p></div>`).join('')}</div>`;
+  }
+  function aux(sj, id) {
+    if (!sj) return '';
+    const chips = sj.prompts.map((x) => PROMPTS.find((y) => y.id === x)).filter(Boolean);
+    const docs = sj.checklist.length ? `<div class="aux-b"><h4>Keep these ready <span class="muted">${sj.ticked} of ${sj.checklist.length}</span></h4>
+      <div class="st-bar"><i style="width:${Math.round((sj.ticked / sj.checklist.length) * 100)}%"></i></div>
+      <ul class="docs">${sj.checklist.map((c) => `<li><label><input type="checkbox" data-check="${c.key}" data-label="${esc(c.label)}" ${c.done ? 'checked' : ''}><span>${esc(c.label)}</span></label></li>`).join('')}</ul></div>` : '';
+    const ask = chips.length ? `<div class="aux-b"><h4>Let Claude help</h4><p class="hint" style="margin-top:0">Copy a request and paste it into Claude${id === 'admit' || id === 'offers' ? ' with your documents attached' : ''}.</p>
+      ${chips.map((x) => { const t = fillPrompt(x.text, cur.plan); return `<button class="st-prompt" data-act="copy" data-text="${esc(t)}"><b>${esc(x.title)}</b><small>${esc(x.when)}</small><span>Copy</span></button>`; }).join('')}</div>` : '';
+    return docs || ask ? `<div class="aux${docs && ask ? '' : ' one'}">${docs}${ask}</div>` : '';
+  }
+
+  const STEP_BODY = {
+    shortlist(sj) {
+      const p = cur.plan; const list = shortlistOf(p);
+      return `<div class="card pad">
+        <div class="search"><input id="uq" placeholder="Add a college: Purdue, Toronto, TU Munich…" autocomplete="off" aria-label="Search universities" value="${esc(cur.uq)}"></div>
+        <div class="sugg" id="sugg"></div>
+        <div class="slist">${list.map((name) => { const u = UNI(name); const mine = p.university === name; return `<div class="sitem${mine ? ' mine' : ''}">
+          <div><b>${esc(name)}</b><small>${u ? `${esc(u.program)}, ${esc(u.city)}, ${esc(u.country)}. ${u.duration_months} months.` : 'Added by you'}</small></div>
+          <div class="sact"><button class="linkbtn2" data-act="copy" data-text="${esc(fillPrompt(PROMPTS.find((x) => x.id === 'course-deep').text, { ...p, university: name, program: u?.program || p.program }))}">Ask Claude about it</button>
+            ${mine ? '<span class="mine-tag">My college</span>' : `<button class="btn small" data-act="make-final" data-v="${esc(name)}">Make this my college</button>`}
+            <button class="x" data-act="remove-short" data-v="${esc(name)}" aria-label="Remove ${esc(name)}">✕</button></div></div>`; }).join('') || '<p class="hint">Add the colleges you’re applying to. Then use Claude to compare them and pick one.</p>'}</div>
+      </div>${checksBlock(sj)}`;
+    },
+    admit(sj) { return `<div class="card pad"><aside class="inputs flat" id="inputs"></aside></div>${checksBlock(sj)}`; },
+    finance(sj) { return `${checksBlock(sj)}<div class="card pad"><aside class="inputs flat" id="inputs"></aside></div>`; },
+    offers(sj) { return `<div class="card pad"><aside class="inputs flat" id="inputs"></aside></div>${complete(cur.plan) ? checksBlock(sj) : ''}`; },
+    compare() {
+      if (!complete(cur.plan)) return '<div class="card pad"><p>Add a loan offer first.</p></div>';
+      const rec = offerC(recId());
+      return `<section class="card pad"><div class="sec-h"><h3>All your offers side by side</h3><span class="small muted">Cheapest first</span></div><div id="bars" class="cmp"></div>
+        <p class="hint mt12"><b>Total by the end</b> is your own money plus every EMI and fee. <b>Extra if things go badly</b> is how much more you’d pay if the rupee weakens and interest rates rise, like in the worst past years.</p></section>
+        <div class="pick-note"><b>Our pick is ${esc(rec.lender)}.</b> ${esc(whyText())}</div>
+        <details class="card pad wi-d"><summary>Try a different situation</summary><div id="whatif"></div></details>`;
+    },
+    save() {
+      if (!complete(cur.plan)) return '<div class="card pad"><p>Choose a loan first.</p></div>';
+      const p = cur.plan;
+      return `<section class="ans" id="ans"></section>
+        <div class="save-bar">${p.saved_at ? `<span class="saved">Saved ${ago(p.saved_at)}</span><button class="btn" data-act="share">Share with family</button><button class="btn primary" data-act="next">See my repayment plan</button>` : `<span class="hint" style="margin:0">Happy with this? Save it. You can still change things later.</span><button class="btn primary" data-act="save-plan">Save my plan</button>`}</div>`;
+    },
+    repay(sj) {
+      if (!complete(cur.plan)) return '';
+      const p = cur.plan; const c = offerC(chosenId());
+      const D = p.duration_months || 24, M = c.moratorium_months, close = c.months_to_close;
+      const at = (m) => { const d = startDate(); d.setMonth(d.getMonth() + m); return monthYear(d); };
+      const pr = parts(c);
+      const rows = [
+        ['While you study', `${D} months`, c.moratorium_mode === 'pay' ? `You pay about ${inr(c.monthly_interest_during_study_inr)} a month in interest.` : `No payments. About ${lakh(c.capitalised_interest_inr)} of interest gets added to your loan.`],
+        ...(M > D ? [['Break after the course', `${M - D} months`, 'Time to find a job. Still no EMI.']] : []),
+        ['First EMI', at(M), `${esc(c.lender)} starts taking EMIs.`],
+        ['EMI', `${inr(c.emi_inr)} a month`, c.affordability?.emi_share_pct != null ? `About ${Math.round(c.affordability.emi_share_pct)}% of your take-home salary.` : 'Add your expected salary in step 4 to check if this is comfortable.'],
+        ['You repay for', yrs(close), `The loan closes in ${at(M + close)}.`],
+        ['Total interest', lakh(pr.interest), `On the ${lakh(pr.borrowed)} you borrow.`],
+      ];
+      const A = p.assumptions;
+      return `<section class="card pad"><div class="sec-h"><h3>${esc(c.lender)}</h3><span class="small muted">${c.rate_pct}% interest${c.rate_type === 'floating' ? ', can change with RBI rates' : ', fixed'}</span></div>
+        <dl class="rplan">${rows.map(([k, v, d]) => `<div><dt>${k}</dt><dd><b>${v}</b><span>${d}</span></dd></div>`).join('')}</dl>
+        <div class="wi mt16"><div class="wi-l">Pay extra each month once you have a job?</div>
+          <div class="presets">${[0, 10000, 25000, 50000].map((v) => `<button class="preset${(A.prepay_monthly_inr || 0) === v ? ' on' : ''}" data-act="prepay" data-v="${v}">${v ? `₹${v.toLocaleString('en-IN')}` : 'No'}</button>`).join('')}</div></div></section>
+        <section class="card pad tl" id="journey"></section>
+        ${checksBlock(sj)}`;
+    },
+    sanction(sj) { return checksBlock(sj); },
+    study(sj) { return checksBlock(sj); },
+  };
+
+  function whyText() {
+    const { comp } = cur; const rec = offerC(recId()); const todayBest = offerC(comp.best_offer_id);
+    const others = comp.offers.filter((o) => o.id !== rec.id).map((o) => ({ o, t: typical(o.id) })).sort((a, b) => a.t - b.t);
+    if (!others.length) return 'It’s your only offer so far.';
+    const base = `By the end, it costs ${lakh(others[0].t - typical(rec.id))} less than ${nm(others[0].o.lender)}.`;
+    const safe = comp.offers.map((o) => ({ o, b: typical(o.id) + badExtra(o.id) })).sort((a, b) => a.b - b.b)[0].o;
+    const tail = safe.id !== rec.id ? ` If things go badly, ${nm(safe.lender)} would cost less, so pick it if you’d rather play safe.` : '';
+    return (todayBest && todayBest.id !== rec.id ? `${base} ${nm(todayBest.lender)} looks cheaper if nothing changes, but we checked every start month since 2001 and ${nm(rec.lender)} usually came out cheaper.` : base) + tail;
+  }
+
   // ----- left: the three questions -----
   const srcTag = (x) => x?.edited && Object.keys(x.edited).length ? '<span class="src you">edited</span>' : x?.source === 'claude' ? '<span class="src claude">from Claude</span>' : '';
   function renderInputs() {
     const p = cur.plan; const f = p.funds;
     let coa = null; try { coa = p.costs.length ? LL.computePlan(p).coa_today_inr : null; } catch { /* none */ }
     const showSearch = !p.university || cur.picking;
-    const buildPrompt = fillPrompt(PROMPTS.find((x) => x.id === 'build-docs')?.text || '', p);
-    document.getElementById('inputs').innerHTML = `
-      <div class="q ${p.university ? 'done' : ''}"><div class="q-h"><span class="qn">1</span>Where are you studying?</div>
+    const el = document.getElementById('inputs'); if (!el) return;
+    const need = (() => { try { const c = LL.computePlan(p); return Math.max(0, c.coa_today_inr - c.scholarship_inr - (f.savings_inr || 0)); } catch { return null; } })();
+    const sec = {
+      admit: `<div class="q"><div class="q-h">Your college and its costs</div>
         ${showSearch ? `<div class="search"><input id="uq" placeholder="Search: Purdue, Toronto, TU Munich…" autocomplete="off" aria-label="Search universities" value="${esc(cur.uq)}"></div>
           <div class="sugg" id="sugg"></div>
-          <p class="hint">97 CS master’s programmes. <button class="linkbtn2" data-act="manual-uni">Not listed?</button>${p.university ? ' · <button class="linkbtn2" data-act="cancel-pick">Cancel</button>' : ''}</p>`
-        : `<div class="picked"><div><b>${esc(p.university)}</b><span>${coa ? `${lakh(coa)} for ${p.duration_months || 24} months` : 'Add the costs below'}</span></div><button class="btn small" data-act="change-uni">Change</button></div>
-          <button class="linkbtn2 mt8" data-act="toggle-costs">${cur.costsOpen ? 'Hide costs' : `See costs (${p.costs.length} lines)`}</button>
+          <p class="hint"><button class="linkbtn2" data-act="manual-uni">Not listed?</button>${p.university ? ' <button class="linkbtn2" data-act="cancel-pick">Cancel</button>' : ''}</p>`
+        : `<div class="picked"><div><b>${esc(p.university)}</b><span>${coa ? `${lakh(coa)} for ${p.duration_months || 24} months, from ${p.costs.some((c) => c.source === 'claude') ? 'your I-20' : 'our data'}` : 'Add the costs below'}</span></div><button class="btn small" data-act="toggle-costs">${cur.costsOpen ? 'Hide costs' : 'See costs'}</button></div>
           ${cur.costsOpen ? costsEditor() : ''}`}
-      </div>
-      <div class="q ${f.savings_inr != null ? 'done' : ''}"><div class="q-h"><span class="qn">2</span>How much can your family pay upfront?</div>
+      </div>`,
+      finance: `<div class="q"><div class="q-h">How much can your family pay from savings?</div>
         <div class="money-in"><span>₹</span><input type="number" min="0" step="50000" data-fund="savings_inr" value="${f.savings_inr ?? ''}" placeholder="15,00,000" aria-label="Family savings in rupees"></div>
-        <p class="hint">${f.savings_inr ? `${lakh(f.savings_inr)} in savings for this degree.` : 'Savings set aside for this degree.'}</p>
-        <details class="mini"${f.scholarship ? ' open' : ''}><summary>Got a scholarship?</summary>
-          <div class="inline mt8"><select data-fund-ccy aria-label="Scholarship currency">${['USD', 'GBP', 'EUR', 'CAD', 'AUD', 'INR'].map((x) => `<option ${x === (f.scholarship_currency || p.currency || 'USD') ? 'selected' : ''}>${x}</option>`).join('')}</select><input type="number" min="0" step="500" data-fund="scholarship" value="${f.scholarship || ''}" placeholder="Total for the course" aria-label="Scholarship amount"></div></details>
-      </div>
-      <div class="q ${p.offers.length ? 'done' : ''}"><div class="q-h"><span class="qn">3</span>Which loans were you offered?</div>
-        ${p.offers.map((o, i) => offerEditor(o, i)).join('')}
+        <p class="hint">${f.savings_inr ? `${lakh(f.savings_inr)} from savings for this degree.` : 'Money your family has set aside for this degree.'}</p></div>
+      <div class="q"><div class="q-h">Do you have a scholarship?</div>
+        <div class="inline"><select data-fund-ccy aria-label="Scholarship currency">${['USD', 'GBP', 'EUR', 'CAD', 'AUD', 'INR'].map((x) => `<option ${x === (f.scholarship_currency || p.currency || 'USD') ? 'selected' : ''}>${x}</option>`).join('')}</select><input type="number" min="0" step="500" data-fund="scholarship" value="${f.scholarship || ''}" placeholder="0" aria-label="Scholarship amount"></div>
+        <p class="hint">Total for the whole course. Leave it empty if you don’t have one.</p></div>
+      <div class="q"><div class="q-h">How much do you want to borrow?</div>
+        <div class="money-in"><span>₹</span><input type="number" min="0" step="100000" data-fund="loan_need_inr" value="${f.loan_need_inr ?? ''}" placeholder="${need != null ? Math.round(need / 1e5) * 1e5 : ''}" aria-label="Loan you need in rupees"></div>
+        <p class="hint">${need != null ? `Your degree costs ${lakh(coa)}. After savings${f.scholarship ? ' and scholarship' : ''}, you need about <b>${lakh(need)}</b>.` : 'Add your college first.'}</p></div>
+      <div class="q"><div class="q-h">What salary do you expect after the course? <span class="muted small">(optional)</span></div>
+        <div class="inline"><select data-a="salary_currency" aria-label="Salary currency">${['USD', 'GBP', 'EUR', 'CAD', 'AUD', 'INR'].map((x) => `<option ${x === (p.assumptions.salary_currency || p.currency || 'USD') ? 'selected' : ''}>${x}</option>`).join('')}</select><input type="number" min="0" step="1000" data-a="expected_salary" value="${p.assumptions.expected_salary ?? ''}" placeholder="Per year, before tax" aria-label="Expected salary per year"></div>
+        <p class="hint">We use this to check if the EMI is comfortable.</p></div>`,
+      offers: `<div class="q"><div class="q-h">Your loan offers</div>
+        ${p.offers.map((o, i) => offerEditor(o, i)).join('') || '<p class="hint" style="margin-top:0">No offers yet. Ask Claude to read your sanction letters, or add one below.</p>'}
         <select class="add-offer" data-add-lender aria-label="Add a loan offer"><option value="">+ Add a loan offer</option>${LL.LENDERS.map((l, i) => `<option value="${i}">${esc(l.lender)} (${l.rate_min}${l.rate_max ? `–${l.rate_max}` : '+'}%)</option>`).join('')}<option value="-1">Another lender</option></select>
-        <p class="hint">We fill in published terms. Match them to your sanction letter.</p>
-      </div>
-      <div class="claude-mini"><span class="ai">AI</span><div><b>Have the letters?</b><span>Let Claude fill all of this in.</span></div><button class="btn small" data-act="copy" data-text="${esc(buildPrompt)}">Copy prompt</button></div>`;
+        <p class="hint">We fill in the bank’s published terms. Change them to match your letter.</p></div>`,
+    };
+    el.innerHTML = sec[cur.view] || '';
     if (showSearch) drawSugg();
     document.querySelectorAll('details.offer-in').forEach((d) => d.addEventListener('toggle', () => { if (d.open) cur.openOffer = d.dataset.offer; else if (cur.openOffer === d.dataset.offer) cur.openOffer = null; }));
   }
@@ -435,7 +576,9 @@
     const box = document.getElementById('sugg'); if (!box) return;
     const q = cur.uq.toLowerCase().trim();
     const list = LL.UNIVERSITIES.map((u, i) => ({ u, i })).filter(({ u }) => !q || u.university.toLowerCase().includes(q) || u.city.toLowerCase().includes(q) || u.country.toLowerCase().includes(q)).sort((a, b) => a.u.total_today_inr_lakh - b.u.total_today_inr_lakh).slice(0, q ? 8 : 5);
-    box.innerHTML = (q ? '' : '<div class="sugg-h">Popular, cheapest first</div>') + (list.map(({ u, i }) => `<button class="sugg-i" data-act="pick-uni" data-i="${i}"><span><b>${esc(u.university)}</b><small>${esc(u.city)}, ${esc(u.country)} · ${u.duration_months} months</small></span><b>${lakh(u.total_today_inr_lakh * 1e5)}</b></button>`).join('') || '<p class="hint">No match. Try another name, or add yours with “Not listed?”</p>');
+    const sl = cur.view === 'shortlist';
+    if (sl && !q) { box.innerHTML = ''; return; }
+    box.innerHTML = (q ? '' : '<div class="sugg-h">Popular</div>') + (list.filter(({ u }) => !sl || !shortlistOf(cur.plan).includes(u.university)).map(({ u, i }) => `<button class="sugg-i" data-act="${sl ? 'add-short' : 'pick-uni'}" data-i="${i}"><span><b>${esc(u.university)}</b><small>${esc(u.program)}, ${esc(u.city)}, ${esc(u.country)}</small></span>${sl ? '<em class="add">+ Add</em>' : `<b>${lakh(u.total_today_inr_lakh * 1e5)}</b>`}</button>`).join('') || '<p class="hint">No match. Try another name.</p>');
   }
 
   function pickUni(u) {
@@ -463,6 +606,7 @@
     const intl = /international/i.test(l.type);
     const D = p.duration_months || 24;
     let need = 0; try { const c = LL.computePlan(p); need = Math.max(0, c.coa_today_inr - c.scholarship_inr - (p.funds.savings_inr || 0)); } catch { /* none */ }
+    if (p.funds.loan_need_inr) need = p.funds.loan_need_inr;
     return {
       id: uid(), lender: l.lender, lender_type: l.type, currency: intl ? 'USD' : 'INR',
       amount: intl ? Math.round(need / LL.SPOT.USD / 1000) * 1000 || 50000 : Math.round(need / 500000) * 500000 || 5000000,
@@ -518,8 +662,9 @@
   const badExtra = (id) => Math.max(0, (offerR(id)?.all_in?.p90 || 0) - typical(id));
 
   function renderAns() {
+    if (!document.getElementById('ans')) return;
     const { comp, plan } = cur;
-    const rec = offerC(recId());
+    const rec = offerC(chosenId()); const pick = offerC(recId()); const isPick = rec.id === pick.id;
     const others = comp.offers.filter((o) => o.id !== rec.id).map((o) => ({ o, t: typical(o.id) })).sort((a, b) => a.t - b.t);
     const next = others[0];
     const todayBest = offerC(comp.best_offer_id);
@@ -533,9 +678,9 @@
       : todayBest && todayBest.id !== rec.id ? `${esc(nm(todayBest.lender))} has a lower total if nothing changes. But its rate or currency is riskier. We checked how all your offers would have worked out for students who started in every month since 2001, and ${esc(nm(rec.lender))} usually came out cheaper.`
       : `It has the lowest total of all your offers, and it stayed the cheapest when we checked how it would have worked out for students who started in every month since 2001.`;
     document.getElementById('ans').innerHTML = `
-      <div class="eyebrow">Our pick${shock ? ` if the rupee gets ${shock}% weaker` : ''}</div>
+      <div class="eyebrow">Your loan${isPick ? ', also our pick' : ''}${shock ? `, if the rupee gets ${shock}% weaker` : ''}</div>
       <p class="say-big">${esc(rec.lender)}</p>
-      <p class="say">${next ? `It’s the cheapest of your ${comp.offers.length} offers. By the end, you pay <b>${lakh(next.t - typical(rec.id))} less</b> than with ${esc(nm(next.o.lender))}.` : 'This is your only offer so far. Add another to compare.'}</p>
+      <p class="say">${!isPick ? `By the end, this costs <b>${lakh(typical(rec.id) - typical(pick.id))} more</b> than ${esc(nm(pick.lender))}, our pick. You can change your choice in step 6.` : next ? `It’s the cheapest of your ${comp.offers.length} offers. By the end, you pay <b>${lakh(next.t - typical(rec.id))} less</b> than with ${esc(nm(next.o.lender))}.` : 'This is your only offer so far.'}</p>
       <ol class="ans-steps">
         <li><span>Before and during the course, from your own money</span><b>${lakh(own)}</b><em>${own > save ? `You have ${lakh(save)} saved, so you need to arrange <strong>${lakh(own - save)} more</strong>.` : `Your savings of ${lakh(save)} cover this.`} This is the part of the costs the loan doesn’t pay, plus the bank’s fees.</em></li>
         <li><span>Borrowed from ${esc(nm(rec.lender))}</span><b>${lakh(pr.borrowed)}</b><em>The bank pays the university directly, one semester at a time.</em></li>
@@ -543,26 +688,30 @@
         <li class="total"><span>Total you’ll have paid by the end</span><b>${lakh(typical(rec.id))}</b><em>Your own money plus every EMI and fee. Of this, ${lakh(pr.interest)} is interest.</em></li>
       </ol>
       <details class="why-d"><summary>What if things go badly?</summary><p>If the rupee gets weaker and interest rates rise, as they did in the worst years since 2001, you could pay about <b>${lakh(extra)} more</b> in total. Keep some money aside for this.</p></details>
-      <details class="why-d"><summary>Why ${esc(nm(rec.lender))}?</summary><p>${why}${safer ? ` One thing to know: if things go badly, ${esc(nm(safer.lender))} would cost less (${lakh(typical(safer.id) + badExtra(safer.id))} against ${lakh(typical(rec.id) + extra)}). If you’d rather play safe, pick ${esc(nm(safer.lender))}.` : ''}</p></details>`;
+      ${isPick ? '' : '<!--'}<details class="why-d"><summary>Why ${esc(nm(rec.lender))}?</summary><p>${why}${safer ? ` One thing to know: if things go badly, ${esc(nm(safer.lender))} would cost less (${lakh(typical(safer.id) + badExtra(safer.id))} against ${lakh(typical(rec.id) + extra)}). If you’d rather play safe, pick ${esc(nm(safer.lender))}.` : ''}</p></details>${isPick ? '' : '-->'}`;
   }
 
   function renderBars() {
+    if (!document.getElementById('bars')) return;
     const { comp } = cur;
     const rows = comp.offers.map((c) => ({ c, t: typical(c.id) })).sort((a, b) => a.t - b.t);
-    const rec = recId();
+    const rec = recId(); const chosen = cur.plan.chosen_offer_id;
     document.getElementById('bars').innerHTML = `
-      <div class="cmp-head"><span>Loan</span><span>Your own money</span><span>EMI a month</span><span>Total by the end</span><span>Extra if things go badly</span></div>
+      <div class="cmp-head"><span>Loan</span><span>EMI a month</span><span>Repay over</span><span>Total interest</span><span>Total by the end</span><span>Extra if things go badly</span><span></span></div>
       ${rows.map(({ c, t }) => `
-      <button class="cmp-row${cur.sel === c.id ? ' sel' : ''}${c.id === rec ? ' best' : ''}" data-act="select-offer" data-id="${c.id}" aria-pressed="${cur.sel === c.id}">
-        <span class="cl"><i style="background:${color(c.id)}"></i><b>${esc(c.lender)}</b><small>${c.rate_pct}% interest${c.currency !== 'INR' ? `, loan in ${c.currency}` : ''}</small>${c.id === rec ? '<em>Our pick</em>' : ''}</span>
-        <span data-l="Your own money">${lakh(c.family_arranges_inr)}</span>
+      <div class="cmp-row${c.id === rec ? ' best' : ''}${c.id === chosen ? ' sel' : ''}">
+        <span class="cl"><i style="background:${color(c.id)}"></i><b>${esc(c.lender)}</b><small>${c.rate_pct}% interest${c.currency !== 'INR' ? `, loan in ${c.currency}` : ''}. You pay ${lakh(c.family_arranges_inr)} yourself.</small>${c.id === rec ? '<em>Our pick</em>' : ''}</span>
         <span data-l="EMI a month">${inr(c.emi_inr)}</span>
+        <span data-l="Repay over">${yrs(c.months_to_close)}</span>
+        <span data-l="Total interest">${lakh(parts(c).interest)}</span>
         <span data-l="Total by the end"><b>${lakh(t)}</b>${c.id === rec ? '' : `<small class="up">${lakh(t - typical(rec))} more</small>`}</span>
         <span data-l="Extra if things go badly">+${lakh(badExtra(c.id))}</span>
-      </button>`).join('')}`;
+        <span class="cc">${c.id === chosen ? '<span class="mine-tag">Chosen</span>' : `<button class="btn small${c.id === rec ? ' primary' : ''}" data-act="choose" data-id="${c.id}">Choose</button>`}</span>
+      </div>`).join('')}`;
   }
 
   function renderWhatIf() {
+    if (!document.getElementById('whatif')) return;
     const p = cur.plan; const A = p.assumptions;
     const st = LL.fxStats(p.currency || 'USD', p.duration_months || 24);
     const presets = [[0, 'No change'], [Math.round(st.p50 * 100), `Usual (${Math.round(st.p50 * 100)}%)`], [Math.round(st.p90 * 100), `Bad (${Math.round(st.p90 * 100)}%)`], [Math.round(st.worst * 100), `Worst ever (${Math.round(st.worst * 100)}%)`]];
@@ -586,6 +735,7 @@
   }
 
   function renderJourney() {
+    if (!document.getElementById('journey')) return;
     const { plan } = cur;
     const c = offerC(cur.sel);
     const D = plan.duration_months || 24, M = c.moratorium_months, close = c.months_to_close, end = M + close;
@@ -603,7 +753,7 @@
       const paidStudy = c.moratorium_mode === 'pay' ? c.monthly_interest_during_study_inr * Math.min(m, M) : 0;
       const paid = paidStudy + Math.max(0, Math.min(m, end) - M) * (c.emi_inr + prepay);
       const monthly = m < M ? (c.moratorium_mode === 'pay' ? c.monthly_interest_during_study_inr : 0) : m < end ? c.emi_inr + prepay : 0;
-      const d = new Date(); d.setMonth(d.getMonth() + 9 + m);
+      const d = startDate(); d.setMonth(d.getMonth() + m);
       document.getElementById('tl-read').innerHTML = `
         <div><small>${d.toLocaleString('en-IN', { month: 'short', year: 'numeric' })}</small><b>${phase}</b></div>
         <div><small>You pay this month</small><b>${monthly ? inr(monthly) : '₹0'}</b></div>
@@ -622,6 +772,7 @@
     ['activity', 'Who changed what?', () => `${cur.activity.length} updates`],
   ];
   function renderMore() {
+    if (!document.getElementById('more')) return;
     const box = document.getElementById('more');
     box.innerHTML = MORE.map(([k, t, a]) => `<details class="card more-sec" data-sec="${k}" ${cur.openSec === k ? 'open' : ''}><summary><span><b>${t}</b><small>${esc(a())}</small></span><span class="chev" aria-hidden="true"></span></summary><div class="sec-body" id="sec-${k}"></div></details>`).join('');
     box.querySelectorAll('details.more-sec').forEach((d) => {
@@ -788,8 +939,7 @@
     if (complete(cur.plan)) recompute();
     await Store.savePlan(cur.plan, note);
     if (note) cur.activity = await Store.activity(cur.plan.id);
-    renderHead(); renderStages(); renderInputs();
-    if (complete(cur.plan) && wasComplete) { renderWhatIf(); fillOutput(); } else renderOutput();
+    renderHead(); renderWiz();
   }
 
   $app.addEventListener('change', async (e) => {
@@ -822,7 +972,7 @@
       if (t.checked) p.checklist[t.dataset.check] = true; else delete p.checklist[t.dataset.check];
       return commit(`${t.checked ? 'Ticked' : 'Unticked'}: ${t.dataset.label}`);
     }
-    if (t.dataset.fund) { p.funds[t.dataset.fund] = t.value === '' ? (t.dataset.fund === 'savings_inr' ? null : 0) : Number(t.value); return commit(`Set ${t.dataset.fund === 'savings_inr' ? 'family savings' : 'scholarship'} to ${t.value || 'blank'}`); }
+    if (t.dataset.fund) { const k = t.dataset.fund; p.funds[k] = t.value === '' ? (k === 'scholarship' ? 0 : null) : Number(t.value); return commit(`Set ${({ savings_inr: 'family savings', scholarship: 'scholarship', loan_need_inr: 'loan needed' })[k]} to ${t.value || 'blank'}`); }
     if ('fundCcy' in t.dataset) { p.funds.scholarship_currency = t.value; return commit(null); }
     if (t.dataset.fx) { (p.fx_rates ||= {})[t.dataset.fx] = Number(t.value); return commit(`Set the exchange rate to ₹${t.value}`); }
     if (t.dataset.a && t.type !== 'range') { p.assumptions[t.dataset.a] = t.type === 'number' ? (t.value === '' ? null : Number(t.value)) : t.value; return commit(null); }
@@ -860,6 +1010,24 @@
         return commit(`Added ${name} by hand`);
       }
       case 'tab': showTab(b.dataset.v); return;
+      case 'goto': if (b.disabled) return; cur.view = b.dataset.v; renderWiz(); window.scrollTo({ top: 0, behavior: 'smooth' }); return;
+      case 'next': {
+        const why = gate(cur.view); if (why) { toast(why); return; }
+        const st = STEPS(); const i = stepIdx(cur.view) + 1; if (i >= st.length) return;
+        if (stepIdx(LL.inferStage(p)) < i) p.stage = st[i].id;
+        cur.view = st[i].id; window.scrollTo({ top: 0, behavior: 'smooth' });
+        return commit(`Moved to: ${st[i].title}`);
+      }
+      case 'add-short': { const u = LL.UNIVERSITIES[Number(b.dataset.i)]; p.shortlist = shortlistOf(p).filter((x) => x !== u.university).concat(u.university); cur.uq = ''; return commit(`Shortlisted ${u.university}`); }
+      case 'remove-short': { p.shortlist = shortlistOf(p).filter((x) => x !== b.dataset.v); if (p.university === b.dataset.v) { p.university = ''; } return commit(`Removed ${b.dataset.v} from the shortlist`); }
+      case 'make-final': { const u = UNI(b.dataset.v); p.shortlist = shortlistOf(p); if (u) return pickUni(u); p.university = b.dataset.v; return commit(`Chose ${b.dataset.v}`); }
+      case 'choose': {
+        const o = p.offers.find((x) => x.id === b.dataset.id); p.chosen_offer_id = o.id; cur.sel = o.id;
+        if (stepIdx(LL.inferStage(p)) < stepIdx('save')) p.stage = 'save';
+        cur.view = 'save'; window.scrollTo({ top: 0, behavior: 'smooth' }); toast(`You chose ${o.lender}`);
+        return commit(`Chose ${o.lender}`);
+      }
+      case 'save-plan': p.saved_at = Date.now(); toast('Plan saved'); return commit('Saved the plan');
       case 'stage': cur.jOpen = cur.jOpen === b.dataset.v || !b.dataset.v ? null : b.dataset.v; renderStages(); return;
       case 'set-stage': { p.stage = b.dataset.v; const t = LL.JOURNEY_STAGES.find((x) => x.id === p.stage)?.title; toast(`Moved to ${t}`); return commit(`Moved to stage: ${t}`); }
       case 'toggle-costs': cur.costsOpen = !cur.costsOpen; renderInputs(); return;

@@ -26,12 +26,18 @@ More prompts: the **Ask Claude** page in the app has 31, grouped by what you're 
 
 ## The student's journey
 
-Every plan carries a six-stage strip: **Shortlist → Admit and I-20 → Loan offers → Sanction and visa → Studying → Repaying**. Each stage shows:
-- **Live checks** computed from the plan with real rules: first-year proof of funds against the country's visa rule (UKVI, IRCC, Home Affairs, German blocked account, US I-20), margin money against savings, rates quoted above the lender's own card, fees and GST due at sanction, TCS on self-funded transfers, interest piling up during the course and what paying it monthly saves, part-time work rules, EMI as a share of take-home pay, what prepaying saves, and whether 80E helps under the family's tax regime.
-- **A document checklist** saved with the plan (KYC, co-borrower ITR, property papers for secured loans, Form A2, DS-160, fee invoices, 80E certificates…).
-- **The Claude prompts** for that stage.
+A plan is a guided path, one step at a time. Each step unlocks when the one before is done:
 
-Claude sees the same journey through `get_plan` and can tick documents it has read and move the stage with `update_plan`.
+**Create your plan → Shortlist colleges → Admit and I-20 → Your money → Loan offers → Compare and choose → Save your plan → Repayment → Sanction and visa → Ready to study**
+
+- **Shortlist:** colleges only, no money talk. Claude prompts to compare courses and pick one.
+- **Admit and I-20:** the documents to collect and the Claude prompts that read them; proof-of-funds rule for the country.
+- **Your money:** savings, scholarship, how much to borrow, expected salary. All from the student.
+- **Loan offers → Compare:** every offer side by side (EMI, years, total interest, total by the end, extra if things go badly), then choose one.
+- **Save → Repayment:** own money, borrowed, EMI, total; then when EMIs start, for how long, and what paying extra saves.
+- **Sanction and visa → Ready to study:** fees at signing, TCS, visa papers, semester disbursements, work rules.
+
+Every number is explained in plain words. Claude sees the same steps through `get_plan` and can save the shortlist, tick documents, choose an offer and move the step with `update_plan`.
 
 ## How it works
 

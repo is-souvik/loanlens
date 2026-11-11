@@ -81,7 +81,7 @@ app.post('/api/rotate-key', auth(async (req, res, u) => {
 // ---------- plans API ----------
 app.get('/api/plans', auth(async (req, res, u) => res.json({ plans: await S.listPlans(u.id) })));
 app.post('/api/plans', auth(async (req, res, u) => {
-  const p = await S.insertPlan(u.id, { title: 'New loan plan', student: u.name, costs: [], offers: [], funds: {}, source: 'manual' });
+  const p = await S.insertPlan(u.id, { title: 'New loan plan', student: u.name, costs: [], offers: [], funds: {}, source: 'manual', stage: 'shortlist' });
   await S.logActivity(p.id, 'You', 'u', 'Created an empty plan');
   res.json({ plan: p });
 }));

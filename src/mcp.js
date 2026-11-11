@@ -10,7 +10,7 @@ import { fxStats, findLender, searchUniversities, LENDERS, FX_AS_OF, REPO_NOW, S
 
 const INSTRUCTIONS = `LoanLens compares study-abroad education loan offers for Indian families on the total amount the family pays, tested against 25 years of real rupee and RBI rate history. There is no AI inside LoanLens: you (Claude) read the student's documents and explain; LoanLens stores the plan, does the math and shares a live page with the family.
 
-Typical flow: create_plan (use_typical_costs if there's no I-20 yet) -> add_loan_offer once per sanction letter, copying numbers exactly -> get_plan or compare_offers to answer. Always give the user the plan_url so they can open and edit the plan. Amounts in INR are rupees (1 lakh = 100,000; 1 crore = 10,000,000). get_plan also returns journey: the student's stage (shortlist, admit, offers, sanction, studying, repaying), live checks for that stage (proof of funds, margin money, TCS, interest piling up, EMI share) and a document checklist; tick items with update_plan mark_done when the user's documents show them. Never invent loan terms: if a number is missing from a letter, leave it out and say so; LoanLens fills it from the lender's published rate card and marks it.`;
+Typical flow: create_plan (use_typical_costs if there's no I-20 yet) -> add_loan_offer once per sanction letter, copying numbers exactly -> get_plan or compare_offers to answer. Always give the user the plan_url so they can open and edit the plan. Amounts in INR are rupees (1 lakh = 100,000; 1 crore = 10,000,000). The plan is a guided journey of 9 steps: shortlist, admit, finance, offers, compare, save, repay, sanction, study. Save a shortlist with update_plan shortlist and the chosen loan with choose_offer. get_plan also returns journey: the student's step, live checks for that stage (proof of funds, margin money, TCS, interest piling up, EMI share) and a document checklist; tick items with update_plan mark_done when the user's documents show them. Never invent loan terms: if a number is missing from a letter, leave it out and say so; LoanLens fills it from the lender's published rate card and marks it.`;
 
 const ok = (obj) => ({ content: [{ type: 'text', text: JSON.stringify(obj, null, 1) }] });
 const fail = (msg) => ({ content: [{ type: 'text', text: msg }], isError: true });
@@ -132,7 +132,9 @@ export function buildServer(user, baseUrl) {
       scholarship_currency: z.enum(['USD', 'GBP', 'EUR', 'CAD', 'AUD', 'INR']).optional(), expected_salary: z.number().min(0).optional(),
       india_salary_inr: z.number().min(0).optional(), tax_regime: z.enum(['new', 'old']).optional(),
       fx_rate: z.number().positive().optional().describe('Rupees per unit of the plan currency, e.g. 95.5 for USD'),
-      stage: z.enum(STAGES.map((x) => x.id)).optional().describe('Where the student is now: shortlist, admit, offers, sanction, studying, repaying'),
+      stage: z.enum(STAGES.map((x) => x.id)).optional().describe('Furthest step the student has reached: shortlist, admit, finance, offers, compare, save, repay, sanction, study'),
+      shortlist: z.array(z.string()).optional().describe('Universities the student is applying to (replaces the list)'),
+      choose_offer: z.string().optional().describe('Offer id or lender name the student has chosen'),
       mark_done: z.array(z.string()).optional().describe('Checklist keys to tick, from get_plan journey.checklist, e.g. ["admit_letter","i20","kyc"]. Tick only what the user\'s documents show.'),
       mark_not_done: z.array(z.string()).optional(),
     },
@@ -150,6 +152,12 @@ export function buildServer(user, baseUrl) {
     for (const k of ['expected_salary', 'india_salary_inr', 'tax_regime']) if (a[k] !== undefined) { p.assumptions[k] = a[k]; changed.push(k.replace(/_/g, ' ')); }
     if (a.fx_rate) { p.fx_rates = { ...(p.fx_rates || {}), [p.currency]: a.fx_rate }; changed.push('exchange rate'); }
     if (a.stage) { p.stage = a.stage; changed.push(`stage to ${STAGES.find((x) => x.id === a.stage).title}`); }
+    if (a.shortlist) { p.shortlist = a.shortlist.slice(0, 15); changed.push(`shortlist (${p.shortlist.length})`); }
+    if (a.choose_offer) {
+      const o = p.offers.find((x) => x.id === a.choose_offer) || p.offers.find((x) => x.lender.toLowerCase().includes(a.choose_offer.toLowerCase()));
+      if (!o) return fail(`No offer matching "${a.choose_offer}".`);
+      p.chosen_offer_id = o.id; changed.push(`chosen offer: ${o.lender}`);
+    }
     if (a.mark_done?.length || a.mark_not_done?.length) {
       p.checklist = { ...(p.checklist || {}) };
       for (const k of a.mark_done || []) p.checklist[k] = true;
