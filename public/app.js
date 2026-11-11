@@ -241,7 +241,7 @@
       return `<a class="card plan-card mt12" href="#/plan/${esc(p.id)}">
         <div><h3>${esc(p.title || 'Untitled plan')}</h3><div class="small muted mt8">${esc(p.university || 'University not set')}${p.intake ? ` · ${esc(p.intake)}` : ''}</div>
           <div class="meta">${p.source === 'claude' ? '<span class="chip claude">Created by Claude</span>' : '<span class="chip">Created by you</span>'}<span class="chip">Stage: ${esc(LL.JOURNEY_STAGES.find((x) => x.id === LL.inferStage(p))?.title || '')}</span><span class="chip">${(p.offers || []).length} loan offers</span><span class="chip">Updated ${ago(p.updated_at || Date.now())}</span></div></div>
-        <div class="ans">${s ? `Best option: <b>${esc(s.rec.lender)}</b>. Degree costs <b>${lakh(s.c.coa_inr)}</b>; your family pays <b>${lakh(s.rr?.all_in?.p50 ?? s.rec.all_in_inr)}</b> in total with this loan, and the EMI is <b>${inr(s.rec.emi_inr)}</b> a month.` : 'Not finished yet. Add the costs and at least one loan offer.'}</div>
+        <div class="pc-ans">${s ? `Best option: <b>${esc(s.rec.lender)}</b>. Degree costs <b>${lakh(s.c.coa_inr)}</b>; your family pays <b>${lakh(s.rr?.all_in?.p50 ?? s.rec.all_in_inr)}</b> in total with this loan, and the EMI is <b>${inr(s.rec.emi_inr)}</b> a month.` : 'Not finished yet. Add the costs and at least one loan offer.'}</div>
         <span class="btn">Open plan</span></a>`;
     }).join('');
     $app.innerHTML = shell('plans', `
@@ -298,7 +298,7 @@
     plan.assumptions = Object.assign({}, LL.DEFAULT_ASSUMPTIONS, plan.assumptions || {});
     plan.funds ||= {}; plan.costs ||= []; plan.offers ||= [];
     const same = cur?.plan?.id === id;
-    cur = { plan, comp: null, risk: null, riskKey: null, activity: await Store.activity(id), sel: same ? cur.sel : null, openOffer: same ? cur.openOffer : null, openSec: same ? cur.openSec : null, costsOpen: same ? cur.costsOpen : false, picking: false, uq: '', tMonth: same ? cur.tMonth : null, jOpen: same ? cur.jOpen : null };
+    cur = { plan, comp: null, risk: null, riskKey: null, activity: await Store.activity(id), sel: same ? cur.sel : null, openOffer: same ? cur.openOffer : null, openSec: same ? cur.openSec : null, costsOpen: same ? cur.costsOpen : false, picking: false, uq: '', tMonth: same ? cur.tMonth : null, jOpen: same ? cur.jOpen : null, tab: same ? cur.tab : null };
     if (complete(plan)) recompute();
     document.title = `${plan.title || 'New plan'} · LoanLens`;
     $app.innerHTML = shell('plans', `
@@ -324,7 +324,7 @@
     const p = cur.plan;
     document.getElementById('phead').innerHTML = `
       <div><div class="crumb"><a href="#/plans">My plans</a></div><h1>${esc(p.title || 'New loan plan')}</h1>
-        <p class="sub">Which loan offer costs your family the least? Answer the three questions on the left.</p></div>
+        <p class="sub">${complete(p) ? `${p.offers.length} loan offer${p.offers.length === 1 ? '' : 's'} compared on what your family really pays.` : 'Answer the three questions on the left. We do the math.'}</p></div>
       ${complete(p) ? `<div class="phead-act"><a class="btn" href="#/share/${esc(p.share_token)}" target="_blank" rel="noopener">Family view</a><button class="btn primary" data-act="share">Share with family</button></div>` : ''}`;
   }
 
@@ -340,9 +340,9 @@
     const lead = now.checks.find((c) => c.tone === 'bad') || now.checks.find((c) => c.tone === 'warn') || now.checks[0];
     box.innerHTML = `
       <ol class="st-strip">${j.stages.map((s) => `<li class="st ${s.status} ${s.ticked === s.checklist.length ? 'full' : ''} ${open?.id === s.id ? 'open' : ''}">
-        <button data-act="stage" data-v="${s.id}" aria-expanded="${open?.id === s.id}">
+        <button data-act="stage" data-v="${s.id}" aria-expanded="${open?.id === s.id}" title="${s.ticked} of ${s.checklist.length} documents ticked">
           <span class="st-dot">${s.status === 'done' || s.ticked === s.checklist.length ? '✓' : ''}</span>
-          <span class="st-t"><b>${esc(s.title)}</b><small>${s.status === 'now' ? 'You are here' : `${s.ticked}/${s.checklist.length} documents`}</small></span>
+          <span class="st-t"><b>${esc(s.title)}</b>${s.status === 'now' ? '<small>You are here</small>' : ''}</span>
           ${flag(s) ? `<i class="st-flag ${flag(s)}" title="${flag(s) === 'bad' ? 'Something to fix' : 'Something to watch'}"></i>` : ''}
         </button></li>`).join('')}</ol>
       ${open ? stagePanel(open, j.current) : lead ? `<button class="st-lead ${lead.tone}" data-act="stage" data-v="${now.id}"><b>${esc(now.title)}:</b> ${esc(lead.title)}<span>Open</span></button>` : ''}`;
@@ -488,15 +488,23 @@
       </div>`;
       return;
     }
+    const tab = cur.tab || 'compare';
+    const TABS = [['compare', 'Compare loans'], ['whatif', 'What if'], ['time', 'Month by month'], ['details', 'Details']];
     out.innerHTML = `
       <section class="ans" id="ans"></section>
-      <section class="card pad"><div class="sec-h"><h3>What each loan costs your family in total</h3><span class="small muted">Click a loan to see its details</span></div><div id="bars" class="bars"></div>
+      <nav class="otabs" role="tablist">${TABS.map(([id, t]) => `<button role="tab" data-act="tab" data-v="${id}" aria-selected="${tab === id}">${t}</button>`).join('')}</nav>
+      <section class="card pad" id="whatif" data-tab="whatif"></section>
+      <section class="card pad" data-tab="compare whatif"><div class="sec-h"><h3>What each loan costs your family in total</h3><span class="small muted">Click a loan to see its details</span></div><div id="bars" class="bars"></div>
         <div class="bar-key"><span><i class="k1"></i>Typical</span><span><i class="k2"></i>If the rupee and rates go badly</span></div></section>
-      <section class="card pad" id="whatif"></section>
-      <section class="card pad tl" id="journey"></section>
-      <div class="more-list" id="more"></div>
-      ${askClaude('results', p, 4)}`;
+      <section class="card pad tl" id="journey" data-tab="time"></section>
+      <div class="more-list" id="more" data-tab="details"></div>`;
+    showTab(tab);
     renderWhatIf(); fillOutput();
+  }
+  function showTab(tab) {
+    cur.tab = tab;
+    document.querySelectorAll('#output [data-tab]').forEach((el) => { el.hidden = !el.dataset.tab.split(' ').includes(tab); });
+    document.querySelectorAll('.otabs [data-act=tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.v === tab)));
   }
 
   function fillOutput() {
@@ -836,6 +844,7 @@
         cur.picking = false; cur.costsOpen = true; toast('Now fill in the costs from your I-20.');
         return commit(`Added ${name} by hand`);
       }
+      case 'tab': showTab(b.dataset.v); return;
       case 'stage': cur.jOpen = cur.jOpen === b.dataset.v || !b.dataset.v ? null : b.dataset.v; renderStages(); return;
       case 'set-stage': { p.stage = b.dataset.v; const t = LL.JOURNEY_STAGES.find((x) => x.id === p.stage)?.title; toast(`Moved to ${t}`); return commit(`Moved to stage: ${t}`); }
       case 'toggle-costs': cur.costsOpen = !cur.costsOpen; renderInputs(); return;
@@ -904,8 +913,8 @@
       const list = PROMPTS.filter((p) => (!g || p.group === g) && (!q || `${p.title} ${p.when} ${p.text} ${p.group}`.toLowerCase().includes(q)));
       const by = groups.map((x) => [x, list.filter((p) => p.group === x)]).filter(([, l]) => l.length);
       document.getElementById('pp-list').innerHTML = by.map(([x, l]) => `<h2 class="mt24">${esc(x)}</h2><div class="pgrid mt12">${l.map((p) => { const t = fillPrompt(p.text, plan); return `<article class="pcard">
-        <h3>${esc(p.title)}</h3><p class="small muted mt8">${esc(p.when)}</p><blockquote>${esc(t)}</blockquote>
-        <div class="pfoot"><span class="ptools">Claude will use: ${p.tools.map((y) => `<code>${esc(y)}</code>`).join(' ')}</span><button class="btn small primary" data-act="copy" data-text="${esc(t)}">Copy prompt</button></div></article>`; }).join('')}</div>`).join('') || '<div class="card empty mt16"><h3>No prompts match</h3><p class="sub" style="margin:8px auto 0">Try another word, or clear the search.</p></div>';
+        <div class="pc-top"><div><h3>${esc(p.title)}</h3><p class="small muted">${esc(p.when)}</p></div><button class="btn small primary" data-act="copy" data-text="${esc(t)}">Copy</button></div>
+        <details class="pc-more"><summary>See the prompt</summary><blockquote>${esc(t)}</blockquote><span class="ptools">Claude will use: ${p.tools.map((y) => `<code>${esc(y)}</code>`).join(' ')}</span></details></article>`; }).join('')}</div>`).join('') || '<div class="card empty mt16"><h3>No prompts match</h3><p class="sub" style="margin:8px auto 0">Try another word, or clear the search.</p></div>';
     };
     document.getElementById('pp-q').addEventListener('input', (e) => { q = e.target.value.toLowerCase().trim(); draw(); });
     document.getElementById('pp-plan').addEventListener('change', (e) => { plan = plans.find((p) => p.id === e.target.value) || null; draw(); });
