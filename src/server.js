@@ -138,10 +138,13 @@ app.get('/mcp/:key', async (req, res) => {
 app.delete('/mcp/:key', (req, res) => res.status(405).set('Allow', 'POST').end());
 
 // ---------- static app ----------
-const indexHtml = readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8').replace('__MODE__', 'live');
+// Version every asset URL with the deploy's commit so browsers never run a stale copy after a deploy.
+const BUILD = (process.env.RENDER_GIT_COMMIT || String(Date.now())).slice(0, 12);
+const indexHtml = readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8').replace('__MODE__', 'live')
+  .replace(/(src|href)="\/([\w./-]+\.(?:js|css))"/g, `$1="/$2?v=${BUILD}"`);
 app.get('/health', (req, res) => res.json({ ok: true }));
 app.get('/favicon.ico', (req, res) => res.type('image/svg+xml').send('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#2e2a8c"/><text x="16" y="22" font-family="Arial" font-size="18" font-weight="700" text-anchor="middle" fill="#f7b32b">L</text></svg>'));
-app.get(['/', '/index.html'], (req, res) => res.type('html').send(indexHtml));
+app.get(['/', '/index.html'], (req, res) => res.set('Cache-Control', 'no-cache').type('html').send(indexHtml));
 app.use(express.static(path.join(ROOT, 'public'), { index: false, maxAge: PROD ? '1h' : 0 }));
 app.use((req, res) => res.status(404).type('html').send(indexHtml));
 
