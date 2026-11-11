@@ -864,3 +864,4 @@ details.more-sec[open] .chev { transform: rotate(-135deg); }
   .sitem { flex-direction: column; align-items: flex-start; }
 }
 @media (max-width: 760px) { .cmp-row .cc { grid-column: 1 / -1; text-align: left; } }
+.del-plan { margin-left: 10px; color: var(--bad) !important; font-size: 13px; }

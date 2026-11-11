@@ -110,6 +110,7 @@
       return p;
     },
     async version(id) { const p = await this.getPlan(id); return p?.updated_at || 0; },
+    async deletePlan(id) { Demo.plans = Demo.plans.filter((p) => p.id !== id); },
     async sharedPlan(token) { return this.getPlan(token); },
   } : {
     async req(method, url, body) {
@@ -132,6 +133,7 @@
     },
     async activity(id) { return (await this.req('GET', `/api/plans/${id}/activity`)).activity; },
     async createPlan() { return (await this.req('POST', '/api/plans', {})).plan; },
+    async deletePlan(id) { await this.req('DELETE', `/api/plans/${id}`); },
     async version(id) { return (await this.req('GET', `/api/plans/${id}/version`)).updated_at; },
     async sharedPlan(token) { return (await this.req('GET', `/api/share/${token}`)).plan; },
   };
@@ -329,7 +331,7 @@
     const p = cur.plan;
     document.getElementById('phead').innerHTML = `
       <div><div class="crumb"><a href="#/plans">My plans</a></div><h1>${esc(p.title || 'New loan plan')}</h1>
-        <p class="sub">Your study-abroad plan, one step at a time.</p></div>
+        <p class="sub">Your study-abroad plan, one step at a time. <button class="linkbtn2 del-plan" data-act="delete-plan">${cur.delArm ? 'Click again to delete for good' : 'Delete plan'}</button></p></div>
       ${p.chosen_offer_id && complete(p) ? `<div class="phead-act"><a class="btn" href="#/share/${esc(p.share_token)}" target="_blank" rel="noopener">Family view</a><button class="btn primary" data-act="share">Share with family</button></div>` : ''}`;
   }
 
@@ -1010,6 +1012,10 @@
         return commit(`Added ${name} by hand`);
       }
       case 'tab': showTab(b.dataset.v); return;
+      case 'delete-plan': {
+        if (!cur.delArm) { cur.delArm = true; renderHead(); setTimeout(() => { if (cur?.delArm) { cur.delArm = false; renderHead(); } }, 4000); return; }
+        await Store.deletePlan(p.id); toast('Plan deleted'); location.hash = '#/plans'; return;
+      }
       case 'goto': if (b.disabled) return; cur.view = b.dataset.v; renderWiz(); window.scrollTo({ top: 0, behavior: 'smooth' }); return;
       case 'next': {
         const why = gate(cur.view); if (why) { toast(why); return; }
