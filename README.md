@@ -10,9 +10,9 @@ The customer's own Claude does the reading and writing (admit letters, sanction 
 
 | What | Where |
 |---|---|
-| Live app | `https://<your-render-app>.onrender.com` |
+| Live app | `https://loanlens-95ta.onrender.com` |
 | Test login | `demo@loanlens.app` / `demo1234` (or click "Open the test account") |
-| Claude connector (MCP) | `https://<your-render-app>.onrender.com/mcp/ll_volopay_demo_2026` |
+| Claude connector (MCP) | `https://loanlens-95ta.onrender.com/mcp/ll_volopay_demo_2026` |
 | Sample documents to attach in Claude | `demo-docs/Sample_admission_and_costs_Purdue.pdf`, `demo-docs/Sample_loan_offers.pdf` |
 
 ### Connect it to Claude (1 minute)
@@ -88,7 +88,7 @@ Node 22.5+ is required (uses the built-in SQLite for local runs).
 
 1. Push this folder to a GitHub repository.
 2. In Render: **New → Blueprint**, pick the repository. `render.yaml` creates the web service and a Postgres database.
-3. When it's live, open `https://<app>.onrender.com/health`, then sign in with the test account.
+3. When it's live, open `https://loanlens-95ta.onrender.com/health`, then sign in with the test account.
 
 Render's free web service sleeps after 15 minutes idle and takes about a minute to wake. For the review period, either upgrade the service to Starter or open the app once before testing the connector.
 
