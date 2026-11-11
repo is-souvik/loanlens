@@ -241,7 +241,7 @@
       return `<a class="card plan-card mt12" href="#/plan/${esc(p.id)}">
         <div><h3>${esc(p.title || 'Untitled plan')}</h3><div class="small muted mt8">${esc(p.university || 'University not set')}${p.intake ? ` · ${esc(p.intake)}` : ''}</div>
           <div class="meta">${p.source === 'claude' ? '<span class="chip claude">Created by Claude</span>' : '<span class="chip">Created by you</span>'}<span class="chip">Stage: ${esc(LL.JOURNEY_STAGES.find((x) => x.id === LL.inferStage(p))?.title || '')}</span><span class="chip">${(p.offers || []).length} loan offers</span><span class="chip">Updated ${ago(p.updated_at || Date.now())}</span></div></div>
-        <div class="pc-ans">${s ? `Best option: <b>${esc(s.rec.lender)}</b>. Degree costs <b>${lakh(s.c.coa_inr)}</b>; your family pays <b>${lakh(s.rr?.all_in?.p50 ?? s.rec.all_in_inr)}</b> in total with this loan, and the EMI is <b>${inr(s.rec.emi_inr)}</b> a month.` : 'Not finished yet. Add the costs and at least one loan offer.'}</div>
+        <div class="pc-ans">${s ? `Our pick: <b>${esc(s.rec.lender)}</b>. EMI <b>${inr(s.rec.emi_inr)}</b> a month after the course. You’ll pay about <b>${lakh(s.rr?.all_in?.p50 ?? s.rec.all_in_inr)}</b> in total by the end.` : 'Not finished yet. Add the costs and at least one loan offer.'}</div>
         <span class="btn">Open plan</span></a>`;
     }).join('');
     $app.innerHTML = shell('plans', `
@@ -330,7 +330,7 @@
 
 
   // ----- the student's journey: where you are, what to check, what to collect -----
-  const TONE = { good: 'Looks fine', warn: 'Watch this', bad: 'Fix this', info: 'Good to know' };
+  const TONE = { good: 'All good', warn: 'Keep in mind', bad: 'Act on this', info: '' };
   function renderStages() {
     const p = cur.plan; const box = document.getElementById('stages'); if (!box) return;
     let j; try { j = LL.journey(p, cur.comp ? recId() : undefined); } catch (err) { console.error(err); box.innerHTML = ''; return; }
@@ -353,13 +353,13 @@
     const chips = s.prompts.map((id) => PROMPTS.find((x) => x.id === id)).filter(Boolean);
     return `<div class="st-panel card">
       <div class="st-ph"><div><h3>${esc(s.title)}</h3><span class="small muted">${esc(s.when)}</span></div>
-        <div class="st-pa">${s.id === current ? '<span class="st-here">You are here</span>' : `<button class="btn small" data-act="set-stage" data-v="${s.id}">I’m at this stage</button>`}<button class="x" data-act="stage" data-v="" aria-label="Close">✕</button></div></div>
+        <div class="st-pa">${s.id === current ? '<span class="st-here">You are here</span>' : `<button class="btn small" data-act="set-stage" data-v="${s.id}">I’m here now</button>`}<button class="x" data-act="stage" data-v="" aria-label="Close">✕</button></div></div>
       <div class="st-grid">
-        <div><h4>What we checked</h4>${s.checks.length ? s.checks.map((c) => `<div class="chk ${c.tone}"><span class="chk-t">${TONE[c.tone]}</span><b>${esc(c.title)}</b><p>${esc(c.text)}</p></div>`).join('') : '<p class="hint">Add your university and offers to see checks here.</p>'}</div>
-        <div><h4>Documents <span class="muted">${s.ticked} of ${s.checklist.length}</span></h4>
+        <div><h4>What this means for you</h4>${s.checks.length ? s.checks.map((c) => `<div class="chk ${c.tone}">${TONE[c.tone] ? `<span class="chk-t">${TONE[c.tone]}</span>` : ''}<b>${esc(c.title)}</b><p>${esc(c.text)}</p></div>`).join('') : '<p class="hint">Add your university and offers to see checks here.</p>'}</div>
+        <div><h4>Keep these ready <span class="muted">${s.ticked} of ${s.checklist.length}</span></h4>
           <div class="st-bar"><i style="width:${s.checklist.length ? Math.round((s.ticked / s.checklist.length) * 100) : 0}%"></i></div>
           <ul class="docs">${s.checklist.map((c) => `<li><label><input type="checkbox" data-check="${c.key}" data-label="${esc(c.label)}" ${c.done ? 'checked' : ''}><span>${esc(c.label)}</span></label></li>`).join('')}</ul></div>
-        <div><h4>Ask Claude</h4><p class="hint" style="margin-top:0">Copy, then paste into Claude with LoanLens connected.</p>
+        <div><h4>Let Claude help</h4><p class="hint" style="margin-top:0">Copy a request and paste it into Claude.</p>
           ${chips.map((x) => { const t = fillPrompt(x.text, cur.plan); return `<button class="st-prompt" data-act="copy" data-text="${esc(t)}"><b>${esc(x.title)}</b><small>${esc(x.when)}</small><span>Copy</span></button>`; }).join('')}</div>
       </div></div>`;
   }
@@ -494,8 +494,8 @@
       <section class="ans" id="ans"></section>
       <nav class="otabs" role="tablist">${TABS.map(([id, t]) => `<button role="tab" data-act="tab" data-v="${id}" aria-selected="${tab === id}">${t}</button>`).join('')}</nav>
       <section class="card pad" id="whatif" data-tab="whatif"></section>
-      <section class="card pad" data-tab="compare whatif"><div class="sec-h"><h3>What each loan costs your family in total</h3><span class="small muted">Click a loan to see its details</span></div><div id="bars" class="bars"></div>
-        <div class="bar-key"><span><i class="k1"></i>Typical</span><span><i class="k2"></i>If the rupee and rates go badly</span></div></section>
+      <section class="card pad" data-tab="compare whatif"><div class="sec-h"><h3>All your offers side by side</h3><span class="small muted">Cheapest first</span></div><div id="bars" class="cmp"></div>
+        <p class="hint mt12"><b>Total by the end</b> is your own money plus every EMI and fee. <b>Extra if things go badly</b> is how much more you’d pay if the rupee weakens and rates rise like in the worst past years.</p></section>
       <section class="card pad tl" id="journey" data-tab="time"></section>
       <div class="more-list" id="more" data-tab="details"></div>`;
     showTab(tab);
@@ -512,56 +512,71 @@
     renderAns(); renderBars(); renderJourney(); renderMore();
   }
 
+  // Lender name as people say it: "SBI", "HDFC Credila", "Prodigy"
+  const nm = (l) => String(l).replace(/ Global Ed-Vantage| Finance$/, '');
+  const yrs = (m) => { const y = Math.round((m / 12) * 2) / 2; return `${y % 1 ? y.toFixed(1) : y} year${y === 1 ? '' : 's'}`; };
+  const badExtra = (id) => Math.max(0, (offerR(id)?.all_in?.p90 || 0) - typical(id));
+
   function renderAns() {
-    const { comp, risk, plan } = cur;
-    const rec = offerC(recId()); const rr = offerR(rec.id);
+    const { comp, plan } = cur;
+    const rec = offerC(recId());
     const others = comp.offers.filter((o) => o.id !== rec.id).map((o) => ({ o, t: typical(o.id) })).sort((a, b) => a.t - b.t);
     const next = others[0];
     const todayBest = offerC(comp.best_offer_id);
     const shock = plan.assumptions.fx_shock_pct || 0;
-    const why = shock ? `With the rupee ${shock}% weaker, this offer costs least.`
-      : todayBest && todayBest.id !== rec.id ? `At today’s rates, ${esc(short(todayBest.lender))} looks ${lakh(rec.all_in_inr - todayBest.all_in_inr)} cheaper. Once we replay real rate hikes and rupee falls (${risk.windows} paths since 2001), ${esc(short(rec.lender))} costs less.`
-      : `It costs least at today’s rates and across ${risk.windows} historical paths of the rupee and RBI rates.`;
     const pr = parts(rec);
+    const own = rec.family_arranges_inr, save = comp.savings_inr;
+    const grace = Math.max(0, rec.moratorium_months - (plan.duration_months || 24));
+    const extra = badExtra(rec.id);
+    const safer = shock ? null : comp.offers.map((o) => ({ o, b: typical(o.id) + badExtra(o.id) })).sort((a, b) => a.b - b.b).map((x) => x.o).find((o, i) => i === 0 && o.id !== rec.id) || null;
+    const why = shock ? `With the rupee ${shock}% weaker, ${esc(nm(rec.lender))} still costs you the least overall.`
+      : todayBest && todayBest.id !== rec.id ? `${esc(nm(todayBest.lender))} has a lower total if nothing changes. But its rate or currency is riskier. We checked how all your offers would have worked out for students who started in every month since 2001, and ${esc(nm(rec.lender))} usually came out cheaper.`
+      : `It has the lowest total of all your offers, and it stayed the cheapest when we checked how it would have worked out for students who started in every month since 2001.`;
     document.getElementById('ans').innerHTML = `
-      <div class="eyebrow">Our answer${shock ? ` if the rupee falls ${shock}%` : ''}</div>
-      <p class="say-big">Take ${esc(rec.lender)}</p>
-      <p class="say">Your family pays about <b>${lakh(typical(rec.id))}</b> in total${next ? `, <b>${lakh(next.t - typical(rec.id))} less</b> than ${esc(short(next.o.lender))}` : ''}.</p>
-      <div class="ans-stats">
-        <div><small>Pay now</small><b>${lakh(rec.family_arranges_inr)}</b><span>${rec.family_arranges_inr > comp.savings_inr ? `${lakh(rec.family_arranges_inr - comp.savings_inr)} over savings` : 'covered by savings'}</span></div>
-        <div><small>EMI after the course</small><b>${inr(rec.emi_inr)}</b><span>${rec.months_to_close < rec.tenure_months ? `${(rec.months_to_close / 12).toFixed(1)} years` : `${Math.round(rec.tenure_months / 12)} years`}${rr?.emi_peak_p90 > rec.emi_inr * 1.02 ? `, up to ${inr(rr.emi_peak_p90)}` : ''}</span></div>
-        <div><small>Interest paid</small><b>${lakh(pr.interest)}</b><span>on ${lakh(pr.borrowed)} borrowed</span></div>
-      </div>
-      <details class="why-d"><summary>Why this loan?</summary><p>${why} Keep <b>${lakh(risk.recommended_buffer_inr)}</b> aside in case the rupee falls.</p></details>`;
+      <div class="eyebrow">Our pick${shock ? ` if the rupee gets ${shock}% weaker` : ''}</div>
+      <p class="say-big">${esc(rec.lender)}</p>
+      <p class="say">${next ? `It’s the cheapest of your ${comp.offers.length} offers. By the end, you pay <b>${lakh(next.t - typical(rec.id))} less</b> than with ${esc(nm(next.o.lender))}.` : 'This is your only offer so far. Add another to compare.'}</p>
+      <ol class="ans-steps">
+        <li><span>Before and during the course, from your own money</span><b>${lakh(own)}</b><em>${own > save ? `You have ${lakh(save)} saved, so you need to arrange <strong>${lakh(own - save)} more</strong>.` : `Your savings of ${lakh(save)} cover this.`} This is the part of the costs the loan doesn’t pay, plus the bank’s fees.</em></li>
+        <li><span>Borrowed from ${esc(nm(rec.lender))}</span><b>${lakh(pr.borrowed)}</b><em>The bank pays the university directly, one semester at a time.</em></li>
+        <li><span>Your EMI after the course</span><b>${inr(rec.emi_inr)}<small> a month</small></b><em>Starts ${grace ? `${grace} months after you finish` : 'right after you finish'} and runs for ${yrs(rec.months_to_close)}.</em></li>
+        <li class="total"><span>Total you’ll have paid by the end</span><b>${lakh(typical(rec.id))}</b><em>Your own money plus every EMI and fee. Of this, ${lakh(pr.interest)} is interest.</em></li>
+      </ol>
+      <details class="why-d"><summary>What if things go badly?</summary><p>If the rupee gets weaker and interest rates rise, as they did in the worst years since 2001, you could pay about <b>${lakh(extra)} more</b> in total. Keep some money aside for this.</p></details>
+      <details class="why-d"><summary>Why ${esc(nm(rec.lender))}?</summary><p>${why}${safer ? ` One thing to know: if things go badly, ${esc(nm(safer.lender))} would cost less (${lakh(typical(safer.id) + badExtra(safer.id))} against ${lakh(typical(rec.id) + extra)}). If you’d rather play safe, pick ${esc(nm(safer.lender))}.` : ''}</p></details>`;
   }
 
   function renderBars() {
     const { comp } = cur;
-    const rows = comp.offers.map((c) => ({ c, t: typical(c.id), b: Math.max(typical(c.id), offerR(c.id)?.all_in?.p90 || 0) })).sort((a, b) => a.t - b.t);
-    const max = Math.max(...rows.map((r) => r.b));
+    const rows = comp.offers.map((c) => ({ c, t: typical(c.id) })).sort((a, b) => a.t - b.t);
     const rec = recId();
-    document.getElementById('bars').innerHTML = rows.map(({ c, t, b }) => `
-      <button class="bar-row${cur.sel === c.id ? ' sel' : ''}" data-act="select-offer" data-id="${c.id}" aria-pressed="${cur.sel === c.id}">
-        <span class="bl"><b>${esc(c.lender)}</b><small>${c.rate_pct}% ${esc(c.rate_type)} · EMI ${inr(c.emi_inr)}</small></span>
-        <span class="track"><span class="fill" style="width:${(t / max) * 100}%;background:${color(c.id)}"></span><span class="bad" style="left:${(t / max) * 100}%;width:${((b - t) / max) * 100}%"></span></span>
-        <span class="bv"><b>${lakh(t)}</b>${c.id === rec ? '<em>Lowest</em>' : `<small>+${lakh(t - typical(rec))}</small>`}</span>
-      </button>`).join('');
+    document.getElementById('bars').innerHTML = `
+      <div class="cmp-head"><span>Loan</span><span>Your own money</span><span>EMI a month</span><span>Total by the end</span><span>Extra if things go badly</span></div>
+      ${rows.map(({ c, t }) => `
+      <button class="cmp-row${cur.sel === c.id ? ' sel' : ''}${c.id === rec ? ' best' : ''}" data-act="select-offer" data-id="${c.id}" aria-pressed="${cur.sel === c.id}">
+        <span class="cl"><i style="background:${color(c.id)}"></i><b>${esc(c.lender)}</b><small>${c.rate_pct}% interest${c.currency !== 'INR' ? `, loan in ${c.currency}` : ''}</small>${c.id === rec ? '<em>Our pick</em>' : ''}</span>
+        <span data-l="Your own money">${lakh(c.family_arranges_inr)}</span>
+        <span data-l="EMI a month">${inr(c.emi_inr)}</span>
+        <span data-l="Total by the end"><b>${lakh(t)}</b>${c.id === rec ? '' : `<small class="up">${lakh(t - typical(rec))} more</small>`}</span>
+        <span data-l="Extra if things go badly">+${lakh(badExtra(c.id))}</span>
+      </button>`).join('')}`;
   }
 
   function renderWhatIf() {
     const p = cur.plan; const A = p.assumptions;
     const st = LL.fxStats(p.currency || 'USD', p.duration_months || 24);
-    const presets = [[0, 'Stays'], [Math.round(st.p50 * 100), 'Typical'], [Math.round(st.p90 * 100), 'Bad year'], [Math.round(st.worst * 100), 'Worst ever']];
+    const presets = [[0, 'No change'], [Math.round(st.p50 * 100), `Usual (${Math.round(st.p50 * 100)}%)`], [Math.round(st.p90 * 100), `Bad (${Math.round(st.p90 * 100)}%)`], [Math.round(st.worst * 100), `Worst ever (${Math.round(st.worst * 100)}%)`]];
     document.getElementById('whatif').innerHTML = `
-      <div class="sec-h"><h3>What if…</h3><button class="linkbtn2" data-act="reset-whatif">Reset</button></div>
+      <div class="sec-h"><h3>Try a different situation</h3><button class="linkbtn2" data-act="reset-whatif">Reset</button></div>
+      <p class="hint" style="margin:-4px 0 14px">Change any of these and every number on this page updates.</p>
       <div class="wi-grid">
-        <div class="wi"><div class="wi-l">the rupee falls <b id="shock-out">${A.fx_shock_pct || 0}%</b></div>
+        <div class="wi"><div class="wi-l">What if the rupee gets weaker? <b id="shock-out">${A.fx_shock_pct || 0}%</b></div>
           <input type="range" min="0" max="40" step="1" value="${A.fx_shock_pct || 0}" data-a="fx_shock_pct" aria-label="Rupee fall, percent">
           <div class="presets">${presets.map(([v, l]) => `<button class="preset${(A.fx_shock_pct || 0) === v ? ' on' : ''}" data-act="preset" data-v="${v}">${l}</button>`).join('')}</div></div>
-        <div class="wi"><div class="wi-l">you pay interest while studying</div>
-          <div class="seg"><button class="${A.pay_interest_during_study ? '' : 'on'}" data-act="pay-int" data-v="0">No</button><button class="${A.pay_interest_during_study ? 'on' : ''}" data-act="pay-int" data-v="1">Yes, monthly</button></div></div>
-        <div class="wi"><div class="wi-l">you prepay each month after a job</div>
-          <div class="presets">${[0, 10000, 25000, 50000].map((v) => `<button class="preset${(A.prepay_monthly_inr || 0) === v ? ' on' : ''}" data-act="prepay" data-v="${v}">${v ? `₹${v / 1000}k` : 'Nothing'}</button>`).join('')}</div></div>
+        <div class="wi"><div class="wi-l">Can your family pay the interest while you study?</div>
+          <div class="seg"><button class="${A.pay_interest_during_study ? '' : 'on'}" data-act="pay-int" data-v="0">No</button><button class="${A.pay_interest_during_study ? 'on' : ''}" data-act="pay-int" data-v="1">Yes, every month</button></div></div>
+        <div class="wi"><div class="wi-l">Will you pay extra each month once you have a job?</div>
+          <div class="presets">${[0, 10000, 25000, 50000].map((v) => `<button class="preset${(A.prepay_monthly_inr || 0) === v ? ' on' : ''}" data-act="prepay" data-v="${v}">${v ? `₹${(v).toLocaleString('en-IN')}` : 'No'}</button>`).join('')}</div></div>
       </div>`;
   }
   function syncRail() {
@@ -601,9 +616,9 @@
   }
 
   const MORE = [
-    ['money', 'Where does the money go?', () => `${lakh(parts(offerC(cur.sel)).interest)} of it is interest`],
-    ['afford', 'Can the EMI be repaid?', () => { const a = offerC(cur.sel).affordability; return a ? `EMI is ${a.emi_share_pct}% of take-home pay` : 'Add a salary'; }],
-    ['risk', 'How risky is the rupee?', () => `${pctf(cur.risk.prob_cost_3l_over_plan)} chance of ₹3 L+ extra`],
+    ['money', 'Where does the money go?', () => `${lakh(parts(offerC(cur.sel)).interest)} of what you pay is interest`],
+    ['afford', 'Can you afford the EMI?', () => { const a = offerC(cur.sel).affordability; return a ? `The EMI takes ${Math.round(a.emi_share_pct)}% of your monthly salary` : 'Add your expected salary to check'; }],
+    ['risk', 'How likely is it to cost more?', () => `In about ${Math.max(1, Math.round(cur.risk.prob_cost_3l_over_plan * 10))} out of 10 past cases, costs went ₹3 lakh or more over plan`],
     ['activity', 'Who changed what?', () => `${cur.activity.length} updates`],
   ];
   function renderMore() {

@@ -4,34 +4,35 @@ import { computePlan, costFlows } from './engine.js';
 import { SPOT } from './data.js';
 
 export const STAGES = [
-  { id: 'shortlist', title: 'Shortlist', when: 'Applying' },
-  { id: 'admit', title: 'Admit and I-20', when: 'Admit in hand' },
-  { id: 'offers', title: 'Loan offers', when: 'Comparing lenders' },
-  { id: 'sanction', title: 'Sanction and visa', when: 'Before you fly' },
-  { id: 'studying', title: 'Studying', when: 'During the course' },
-  { id: 'repaying', title: 'Repaying', when: 'After graduation' },
+  { id: 'shortlist', title: 'Shortlist', when: 'You’re choosing universities and applying.' },
+  { id: 'admit', title: 'Admit and I-20', when: 'You have an admit and need your I-20 or visa papers.' },
+  { id: 'offers', title: 'Loan offers', when: 'Banks have sent you loan offers to compare.' },
+  { id: 'sanction', title: 'Sanction and visa', when: 'You’ve picked a loan and are getting your visa.' },
+  { id: 'studying', title: 'Studying', when: 'You’re at university.' },
+  { id: 'repaying', title: 'Repaying', when: 'You’ve graduated and EMIs have started.' },
 ];
 
 const PROOF_FORM = { 'United States': 'I-20', 'United Kingdom': 'CAS', Canada: 'study permit', Australia: 'CoE', Germany: 'visa', Ireland: 'visa' };
+const MONEY = { USD: 'dollar', GBP: 'pound', EUR: 'euro', CAD: 'Canadian dollar', AUD: 'Australian dollar', INR: 'rupee' };
 
-// Official proof-of-funds rules for a student visa (as of 2026)
+// Official proof-of-funds rules for a student visa (as of 2026), in plain words
 const PROOF_RULE = {
-  'United States': 'For the I-20 and the F-1 interview you show liquid funds or a loan sanction that covers the first year’s cost on the I-20.',
-  'United Kingdom': 'For the CAS and visa you show the first year’s unpaid fees plus £1,529 a month in London (£1,171 elsewhere) for 9 months, held for 28 days in a row.',
-  Canada: 'For the study permit you show the first year’s tuition plus CAD 22,895 for living costs, plus travel.',
-  Australia: 'For the visa you show AUD 29,710 for a year’s living costs plus the first year’s tuition and travel.',
-  Germany: 'For the visa you deposit €11,904 in a blocked account (€992 released a month), plus any tuition.',
-  Ireland: 'For the visa you show access to at least €10,000 for each year, on top of the first year’s fees.',
+  'United States': 'You show bank statements or a loan sanction letter that cover the first year’s cost written on your I-20. You show the same papers at your visa interview.',
+  'United Kingdom': 'You show the first year’s fees plus £1,529 a month for living in London (£1,171 outside London) for 9 months. The money must stay in the account for 28 days in a row.',
+  Canada: 'You show the first year’s tuition plus CAD 22,895 for living costs, plus your flight.',
+  Australia: 'You show AUD 29,710 for a year of living costs plus the first year’s tuition and your flight.',
+  Germany: 'You put €11,904 in a blocked account before your visa. Once you’re there, you get €992 a month from it.',
+  Ireland: 'You show at least €10,000 a year for living costs, on top of the first year’s fees.',
 };
 
-// Work allowed while studying (term time)
+// Work allowed while studying, in plain words
 const WORK_RULE = {
-  'United States': 'F-1 students can work on campus up to 20 hours a week in term. Off-campus work needs CPT or OPT.',
-  'United Kingdom': 'Student visa holders on a master’s can work up to 20 hours a week in term and full time in vacations.',
-  Canada: 'Study permit holders can work off campus up to 24 hours a week in term.',
-  Australia: 'Student visa holders can work up to 48 hours a fortnight in term.',
-  Germany: 'Non-EU students can work 140 full days or 280 half days a year.',
-  Ireland: 'Students can work 20 hours a week in term and 40 in the holiday periods.',
+  'United States': 'On an F-1 visa you can work on campus up to 20 hours a week during term. Jobs off campus need special permission (CPT or OPT).',
+  'United Kingdom': 'You can work up to 20 hours a week during term, and full time in the holidays.',
+  Canada: 'You can work off campus up to 24 hours a week during term.',
+  Australia: 'You can work up to 48 hours every two weeks during term.',
+  Germany: 'You can work 140 full days or 280 half days a year.',
+  Ireland: 'You can work 20 hours a week during term and 40 in the holidays.',
 };
 
 const lakh = (v) => {
@@ -74,18 +75,18 @@ function checklists(plan) {
       ['scholarship_letter', 'Scholarship or assistantship letter, if any'],
     ],
     offers: [
-      ['kyc', 'PAN and Aadhaar for you and your co-borrower'],
-      ['itr', 'Co-borrower’s ITR or Form 16 for 2 years'],
+      ['kyc', 'PAN and Aadhaar for you and your co-borrower (usually a parent)'],
+      ['itr', 'Co-borrower’s income tax returns or Form 16 for 2 years'],
       ['payslips', 'Last 3 payslips and 6 months of bank statements'],
       ['marksheets', 'Marksheets: 10th, 12th and degree'],
       ...(secured ? [['property', 'Property papers and valuation for the secured loan']] : []),
-      ['two_lenders', 'Applied to at least 2 lenders (a bank and an NBFC)'],
+      ['two_lenders', 'Applied to at least 2 lenders (a bank and a private lender)'],
     ],
     sanction: [
       ['sanction_signed', 'Sanction letter checked and signed'],
       ['fees_paid', 'Processing fee paid'],
       ...(secured ? [['mortgage', 'Property mortgage registered']] : []),
-      ['a2_lrs', 'Form A2 and LRS declaration for the fee transfer'],
+      ['a2_lrs', 'Form A2 signed at the bank for sending fees abroad'],
       [us ? 'ds160' : 'visa_app', us ? 'DS-160 filed and visa interview booked' : 'Visa application filed'],
       ['forex', 'Forex card or international account for living costs'],
     ],
@@ -96,7 +97,7 @@ function checklists(plan) {
       ['address', 'Lender has your current address and phone'],
     ],
     repaying: [
-      ['nach', 'Auto-debit (NACH) set up for the EMI'],
+      ['nach', 'Auto-debit set up so the EMI is never missed'],
       ['cert_80e', 'Interest certificate downloaded for 80E (old tax regime)'],
       ['prepay_plan', 'Prepayment plan for bonuses and raises'],
       ...(usd ? [['usd_income', 'EMI in dollars matched to dollar income']] : []),
@@ -128,64 +129,75 @@ export function journey(plan, bestId) {
   const add = (s, tone, title, text) => C[s].push({ tone, title, text });
   const country = plan.country || '';
 
-  // Shortlist: what this degree costs and how big the loan will be
-  if (comp) {
-    const gap = Math.max(0, comp.coa_today_inr - comp.scholarship_inr - savings);
-    add('shortlist', 'info', `This degree costs ${lakh(comp.coa_today_inr)} at today’s rate`, savings ? `After ${lakh(savings)} of savings${comp.scholarship_inr ? ' and the scholarship' : ''}, you would borrow about ${lakh(gap)}.` : 'Add your family’s savings to see how much you’d borrow.');
-    const ub = comp.university_benchmark;
-    if (ub?.typical_total_inr) add('shortlist', Math.abs(ub.vs_plan_pct) > 15 ? 'warn' : 'info', `Our data puts this programme at ${lakh(ub.typical_total_inr)}`, `${Math.abs(ub.vs_plan_pct) > 15 ? `Your costs are ${Math.abs(ub.vs_plan_pct)}% ${ub.vs_plan_pct > 0 ? 'above' : 'below'} that. Check the lines against your I-20.` : 'Your costs are close to that.'} If the rupee falls the way it has in bad years, it becomes ${lakh(ub.bad_case_total_inr)}.`);
-  } else add('shortlist', 'warn', 'Pick a university to see the real cost', 'We have 97 CS master’s programmes in 6 countries with tuition and living costs.');
+  const name = (o) => o.lender.replace(/ Global Ed-Vantage| Finance$/, '');
+  const years = Math.round((Number(plan.duration_months) || 24) / 12);
+  const money = MONEY[plan.currency] || 'dollar';
+  const form = PROOF_FORM[country] || 'visa';
 
-  // Admit: proof of funds against the visa rule
+  // Shortlist: only what the degree costs. No loan talk yet.
+  if (comp) {
+    const ub = comp.university_benchmark;
+    add('shortlist', 'info', `Your degree will cost about ${lakh(comp.coa_today_inr)}`, `That’s tuition, rent, food, insurance and flights for ${years === 1 ? 'the whole year' : `all ${years} years`}, at today’s ${money} rate.`);
+    if (ub?.typical_total_inr && ub.bad_case_total_inr > ub.typical_total_inr) {
+      const bad = comp.coa_today_inr * (ub.bad_case_total_inr / ub.typical_total_inr);
+      add('shortlist', 'warn', `It could go up to ${lakh(bad)}`, `The rupee usually gets weaker over time, so the same fees cost more in rupees. Keep about ${lakh(bad - comp.coa_today_inr)} aside for this.`);
+    }
+    if (ub?.typical_total_inr && Math.abs(ub.vs_plan_pct) > 15) add('shortlist', 'warn', `Your costs look ${ub.vs_plan_pct > 0 ? 'higher' : 'lower'} than usual`, `Students here usually spend about ${lakh(ub.typical_total_inr)}. Check your numbers against the university’s cost sheet.`);
+    add('shortlist', 'info', 'Applying costs money too', 'Most universities charge $75 to $150 per application. Budget for 6 to 8 of them.');
+  } else add('shortlist', 'warn', 'Pick a university first', 'Tell us where you’re applying and we’ll show what it really costs.');
+
+  // Admit: can you show enough money for the I-20 or visa?
   if (comp) {
     const fy = firstYearInr(plan);
     const loan = best ? best.sanctioned_inr : 0;
     const have = savings + loan;
-    const form = PROOF_FORM[country] || 'visa';
     const short = fy - have;
-    if (short > 0) add('admit', loan ? 'bad' : 'warn', `${lakh(short)} short of first-year proof of funds`, `Your ${form} needs about ${lakh(fy)}. Savings${loan ? ' plus the loan' : ''} cover ${lakh(have)}.${loan ? '' : ' A sanction letter usually closes this gap.'}`);
-    else add('admit', 'good', `Proof of funds covered with ${lakh(-short)} to spare`, `Your ${form} needs about ${lakh(fy)} for the first year. Savings${loan ? ' plus the loan' : ''} cover ${lakh(have)}.`);
-    if (PROOF_RULE[country]) add('admit', 'info', 'The rule', PROOF_RULE[country]);
+    if (short > 0 && !loan) add('admit', 'warn', `You need to show ${lakh(fy)} for your ${form}`, `The university wants proof that you can pay for the first year. Your savings cover ${lakh(savings)}. A loan sanction letter can cover the other ${lakh(short)}.`);
+    else if (short > 0) add('admit', 'bad', `You’re ${lakh(short)} short for your ${form}`, `You need to show ${lakh(fy)} for the first year. Your savings and loan together cover ${lakh(have)}.`);
+    else add('admit', 'good', `You have enough to get your ${form}`, `You need to show ${lakh(fy)} for the first year. Your savings${loan ? ' and loan' : ''} cover ${lakh(have)}.`);
+    if (PROOF_RULE[country]) add('admit', 'info', `How this works in ${country === 'United States' ? 'the US' : country === 'United Kingdom' ? 'the UK' : country}`, PROOF_RULE[country]);
   }
 
-  // Offers: margin money and the gap between offers
+  // Offers: what each bank asks from you, and how far apart they are
   if (comp?.offers.length) {
-    const tight = comp.offers.filter((o) => o.family_arranges_inr > savings);
-    if (tight.length) add('offers', 'bad', `${tight.map((o) => o.lender).join(', ')} need${tight.length === 1 ? 's' : ''} more upfront than you have`, tight.map((o) => `${o.lender}: ${lakh(o.family_arranges_inr)} from the family`).join('. ') + `. Savings are ${lakh(savings)}.`);
-    else add('offers', 'good', 'Your savings cover every offer’s margin money', `The most any offer asks from you upfront is ${lakh(Math.max(...comp.offers.map((o) => o.family_arranges_inr)))}.`);
+    const tight = comp.offers.filter((o) => o.family_arranges_inr > savings).slice(0, 2);
+    for (const o of tight) add('offers', 'bad', `${name(o)} wants ${lakh(o.family_arranges_inr)} from you upfront`, `Banks pay only part of the cost and your family pays the rest yourself (this is called margin money). You have ${lakh(savings)} saved, so you’re ${lakh(o.family_arranges_inr - savings)} short.`);
+    if (!tight.length) add('offers', 'good', 'Your savings cover what every bank asks upfront', `The most any offer asks your family to pay yourself is ${lakh(Math.max(...comp.offers.map((o) => o.family_arranges_inr)))}.`);
     if (comp.offers.length > 1) {
       const all = comp.offers.map((o) => o.all_in_inr);
-      add('offers', 'info', `${lakh(Math.max(...all) - Math.min(...all))} between your cheapest and dearest offer`, 'At today’s rates. The rate on the letter is only part of it: fees, interest while studying and the loan currency make up the rest.');
-    } else add('offers', 'warn', 'Only one offer so far', 'Families who compare a bank and an NBFC often save lakhs. Add a second offer to see the gap.');
-    const above = comp.offers.filter((o) => o.market_benchmark?.position === 'above published range');
-    if (above.length) add('offers', 'warn', `${above.map((o) => o.lender).join(', ')} quoted above the published range`, 'Ask the lender to match its own rate card before you sign.');
-  } else if (comp) add('offers', 'warn', 'No loan offers yet', 'Add the offers from your sanction letters. We fill missing terms from each lender’s published card.');
+      add('offers', 'info', 'Look beyond the interest rate', 'What you pay back also depends on fees, interest that builds up while you study, and whether the loan is in rupees or dollars. The comparison below adds all of it up.');
+    } else add('offers', 'warn', 'You have only one offer', 'Get at least one more, from a bank and from a private lender. Families often save lakhs by comparing.');
+    for (const o of comp.offers.filter((x) => x.market_benchmark?.position === 'above published range').slice(0, 1)) add('offers', 'warn', `${name(o)}’s rate is higher than it advertises`, 'Ask them to match their own published rate before you sign.');
+  } else if (comp) add('offers', 'warn', 'No loan offers yet', 'Add each offer from the bank’s letter, or ask Claude to read the letters for you.');
 
-  // Sanction: TCS, upfront fees, first transfer
+  // Sanction: what you pay when you sign, and how to send money
   if (best) {
-    add('sanction', best.upfront_fees_inr > 0 ? 'info' : 'good', `${lakh(best.upfront_fees_inr)} due at sanction for ${best.lender}`, best.processing_gst_inr ? `Includes ${lakh(best.processing_gst_inr)} GST on the processing fee.` : 'No GST-bearing fee on this offer.');
-    add('sanction', best.tcs_blocked_inr > 0 ? 'warn' : 'good', best.tcs_blocked_inr > 0 ? `${lakh(best.tcs_blocked_inr)} of TCS held on your savings transfers` : 'No TCS on your fee transfers', best.tcs_blocked_inr > 0 ? 'Transfers from a loan carry no TCS. Self-funded transfers above ₹10 lakh a year carry 5%, which you get back when you file your return.' : 'Loan-funded transfers carry no TCS, and your self-funded part stays under ₹10 lakh a year.');
-  } else add('sanction', 'warn', 'Choose an offer first', 'We’ll show the fees due at sanction and any TCS on your transfers.');
+    if (best.upfront_fees_inr > 0) add('sanction', 'info', `${name(best)} will charge ${lakh(best.upfront_fees_inr)} when you sign`, `That’s the processing fee${best.processing_gst_inr ? `, including ${lakh(best.processing_gst_inr)} GST` : ''}. You pay it before the loan is released.`);
+    else add('sanction', 'good', `${name(best)} charges nothing to sign`, 'No processing fee on this offer.');
+    if (best.tcs_blocked_inr > 0) add('sanction', 'warn', 'Send fees from the loan, not from savings', `When your family sends more than ₹10 lakh a year abroad from its own money, the bank holds back 5% as tax (about ${lakh(best.tcs_blocked_inr)} for you). You get it back when you file your tax return. Money sent from an education loan has no such cut.`);
+    else add('sanction', 'good', 'No tax gets held back on your fee payments', 'Money sent from an education loan has no tax cut, and what you send from savings stays under ₹10 lakh a year.');
+  } else add('sanction', 'warn', 'Pick a loan first', 'We’ll show what you pay when you sign and the best way to send money abroad.');
 
-  // Studying: interest piling up, work rules
+  // Studying: interest grows while you study
   if (best && plan.assumptions?.pay_interest_during_study !== true) {
     let paid = null;
     try { paid = computePlan(plan, { pay_interest_during_study: true }).offers.find((o) => o.id === best.id); } catch { /* skip */ }
-    if (best.capitalised_interest_inr > 0) add('studying', 'warn', `${lakh(best.capitalised_interest_inr)} of interest piles up while you study`, paid ? `Paying about ${lakh(paid.monthly_interest_during_study_inr)} a month during the course saves ${lakh(best.all_in_inr - paid.all_in_inr)} in total.` : 'Paying the interest monthly during the course stops it growing.');
-  } else if (best) add('studying', 'good', 'You’re paying interest as you go', 'Nothing gets added to the loan while you study.');
-  if (WORK_RULE[country]) add('studying', 'info', 'Part-time work', WORK_RULE[country]);
+    if (best.capitalised_interest_inr > 0) add('studying', 'warn', 'Interest keeps adding up while you study', `You don’t pay EMIs during the course, but about ${lakh(best.capitalised_interest_inr)} of interest gets added to your loan.${paid ? ` If your family pays ${lakh(paid.monthly_interest_during_study_inr)} a month while you study, you save ${lakh(best.all_in_inr - paid.all_in_inr)} overall.` : ''}`);
+  } else if (best) add('studying', 'good', 'You’re paying interest as you go', 'Your loan won’t grow while you study.');
+  if (WORK_RULE[country]) add('studying', 'info', 'How much you can work', WORK_RULE[country]);
 
-  // Repaying: EMI share, prepayment, 80E, foreclosure
+  // Repaying: EMI, paying early, tax
   if (best) {
     const a = best.affordability;
-    if (a?.emi_share_pct != null) add('repaying', a.band === 'comfortable' ? 'good' : a.band === 'stretched' ? 'warn' : 'bad', `EMI ${lakh(best.emi_inr)} is ${a.emi_share_pct}% of take-home pay`, a.band === 'comfortable' ? 'Under 20% is comfortable.' : a.band === 'stretched' ? 'Between 20% and 35% is a stretch. Prepaying or a longer tenure helps.' : 'Above 35% is risky. Look at a longer tenure or a cheaper offer.');
-    else add('repaying', 'info', `EMI ${lakh(best.emi_inr)} a month`, 'Add your expected salary to see what share of take-home pay this is.');
+    const emi = `₹${Math.round(best.emi_inr).toLocaleString('en-IN')}`;
+    if (a?.emi_share_pct != null) add('repaying', a.band === 'comfortable' ? 'good' : a.band === 'stretched' ? 'warn' : 'bad', `Your EMI will be ${emi} a month`, a.band === 'comfortable' ? `That’s ${Math.round(a.emi_share_pct)}% of your take-home salary, which is comfortable.` : a.band === 'stretched' ? `That’s ${Math.round(a.emi_share_pct)}% of your take-home salary. Manageable, but tight. Paying a little extra early helps.` : `That’s ${Math.round(a.emi_share_pct)}% of your take-home salary, which is a lot. Look at a longer loan or a cheaper offer.`);
+    else add('repaying', 'info', `Your EMI will be ${emi} a month`, 'Add your expected salary to see if this is comfortable.');
     try {
       const pre = computePlan(plan, { prepay_monthly_inr: 25000 }).offers.find((o) => o.id === best.id);
-      if (pre && pre.months_to_close < best.months_to_close) add('repaying', 'info', `Paying ₹25,000 extra a month saves ${lakh(best.all_in_inr - pre.all_in_inr)}`, `${best.lender} closes in ${(pre.months_to_close / 12).toFixed(1)} years instead of ${(best.months_to_close / 12).toFixed(1)}. Floating-rate loans to individuals can’t charge for prepaying (RBI rule).`);
+      if (pre && pre.months_to_close < best.months_to_close) add('repaying', 'info', `Pay ₹25,000 extra a month and save ${lakh(best.all_in_inr - pre.all_in_inr)}`, `You’d finish the loan in ${(pre.months_to_close / 12).toFixed(1)} years instead of ${(best.months_to_close / 12).toFixed(1)}. Banks can’t charge you for paying early on a floating-rate loan.`);
     } catch { /* skip */ }
-    const old = plan.assumptions?.tax_regime === 'old';
-    add('repaying', old ? 'good' : 'info', old ? `80E saves about ${lakh(best.tax_80e_saving_inr)} in tax` : 'No 80E benefit under the new tax regime', old ? 'Interest is deductible for 8 years from the first repayment year. Keep each year’s interest certificate.' : 'Section 80E only works under the old regime. If the parent repaying files under the old regime, interest is deductible for 8 years.');
+    if (plan.assumptions?.tax_regime === 'old') add('repaying', 'good', `Your family saves about ${lakh(best.tax_80e_saving_inr)} in tax`, 'Under the old tax regime, the interest you pay is tax-free for 8 years (Section 80E). Ask the bank for an interest certificate every year.');
+    else add('repaying', 'info', 'Tax saving works only in the old tax regime', 'Whoever repays can claim the interest under Section 80E for 8 years, but only under the old tax regime. Compare both before choosing.');
   }
 
   return {
