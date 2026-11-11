@@ -121,9 +121,20 @@ app.get('/api/share/:token', open(async (req, res) => {
 app.get('/p/:token', (req, res) => res.redirect(302, `/#/share/${encodeURIComponent(req.params.token)}`));
 
 // ---------- MCP connector ----------
+// Log connector traffic (method, path, status) so connection problems are visible in the host's logs.
+app.use(['/mcp', '/.well-known'], (req, res, next) => {
+  const t = Date.now();
+  res.on('finish', () => console.log(`[mcp] ${req.method} ${req.originalUrl.replace(/ll_[A-Za-z0-9_]+/, 'll_***')} -> ${res.statusCode} ${Date.now() - t}ms ${(req.body && req.body.method) || ''} ua=${(req.get('user-agent') || '').slice(0, 40)}`));
+  next();
+});
+// No OAuth: answer discovery probes with a plain JSON 404 instead of the app's HTML page.
+app.all(/^\/\.well-known\/.*/, (req, res) => res.status(404).json({ error: 'not_found', note: 'LoanLens uses a secret connector URL, not OAuth.' }));
 const mcp = mcpHandler(baseUrl);
 app.post('/mcp/:key', mcp);
-app.get('/mcp/:key', (req, res) => res.status(405).set('Allow', 'POST').json({ jsonrpc: '2.0', error: { code: -32000, message: 'Use POST. This is the LoanLens MCP endpoint for Claude.' }, id: null }));
+app.get('/mcp/:key', async (req, res) => {
+  const ok = !!(await S.getUserByKey(req.params.key).catch(() => null));
+  res.status(405).set('Allow', 'POST').json({ jsonrpc: '2.0', error: { code: -32000, message: `Use POST. This is the LoanLens MCP endpoint for Claude. Connector link ${ok ? 'is valid' : 'is not recognised'}.` }, id: null });
+});
 app.delete('/mcp/:key', (req, res) => res.status(405).set('Allow', 'POST').end());
 
 // ---------- static app ----------
